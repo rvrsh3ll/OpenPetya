@@ -2,8 +2,10 @@
 // Standard libraries are not available, so they have to be purely implemented
 
 #include "bootloader.h"
+#include "io.h"
 #include "petya.h"
 #include "keyboard.h"
+#include "types.h"
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
@@ -18,13 +20,6 @@
 #define COLOR_WHITE_ON_RED      0x4F
 #define COLOR_RED_ON_BLACK      0x0C
 #define COLOR_DARKRED_ON_BLACK  0x04
-
-static inline void outb(uint16_t port, uint8_t val)
-{
-    __asm__ volatile (
-        "outb %0, %1" :: "a"(val), "Nd"(port)
-    );
-}
 
 // Global variables
 static int cursor_row = 0;
