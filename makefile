@@ -11,8 +11,11 @@ MBR_BIN := $(BUILD)/mbr.bin
 STAGE2 := $(BUILD)/stage2.bin
 DISK_IMG := $(BUILD)/disk.img
 
-CFLAGS := -m32 -ffreestanding -nostdlib -nostartfiles -fno-stack-protector -fno-pic -O2 -Wall -Wextra
+SRCS := $(wildcard $(BL_DIR)/*.c)
+OBJS := $(patsubst $(BL_DIR)/%.c, $(BUILD)/%.o, $(SRCS))
+ALL_OBJS := $(BUILD)/entry.o $(OBJS)
 
+CFLAGS := -m32 -ffreestanding -nostdlib -nostartfiles -fno-stack-protector -fno-pic -O2 -Wall -Wextra
 LDFLAGS := -m elf_i386 -T $(BL_DIR)/linker.ld
 
 .PHONY: all clean run dirs
@@ -30,16 +33,12 @@ $(MBR_BIN): $(MBR_DIR)/mbr.asm
 $(BUILD)/entry.o: $(BL_DIR)/entry.asm
 	$(NASM) -f elf32 -o $@ $<
 
-$(BUILD)/bootloader.o: $(BL_DIR)/bootloader.c $(BL_DIR)/bootloader.h
+$(BUILD)/%.o: $(BL_DIR)/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/stage2.elf: $(BUILD)/entry.o $(BUILD)/bootloader.o
-	$(LD) $(LDFLAGS) -o $@ $^
-
-$(STAGE2): $(BUILD)/entry.o $(BUILD)/bootloader.o
+$(STAGE2): $(ALL_OBJS)
 	@echo "Linking stage2 as flat binary..."
 	$(LD) -m elf_i386 -T $(BL_DIR)/linker.ld -o $@ --oformat binary $^
-	# Pad to exactly 16 sectors (16 * 512 bytes = 8192)
 	@size=$$(stat -c%s $@); \
 	if [ $$size -lt 8192 ]; then \
 		dd if=/dev/zero bs=1 count=$$((8192-$$size)) >> $@; \

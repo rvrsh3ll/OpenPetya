@@ -2,16 +2,22 @@
 // Standard libraries are not available, so they have to be purely implemented
 
 #include "bootloader.h"
+#include "petya.h"
+#include "keyboard.h"
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
 #define VGA_ROWS 25
 
+// Reference: https://grokipedia.com/page/BIOS_color_attributes
 #define COLOR_WHITE_ON_BLACK    0x07
 #define COLOR_GREEN_ON_BLACK    0x0A
 #define COLOR_CYAN_ON_BLACK     0x0B
 #define COLOR_YELLOW_ON_BLACK   0x0E
 #define COLOR_WHITE_ON_BLUE     0x1F
+#define COLOR_WHITE_ON_RED      0x4F
+#define COLOR_RED_ON_BLACK      0x0C
+#define COLOR_DARKRED_ON_BLACK  0x04
 
 static inline void outb(uint16_t port, uint8_t val)
 {
@@ -110,7 +116,24 @@ void vga_putchar(char c)
 {
     volatile uint16_t *vga = VGA_BASE;
 
-    if (c == '\n')
+    if (c == '\b')
+    {
+        if (cursor_col > 0)
+        {
+            cursor_col--;
+        }
+        else if (cursor_row > 0)
+        {
+            cursor_row--;
+            cursor_col = VGA_COLS - 1;
+        }
+
+        vga[cursor_row * VGA_COLS + cursor_col] = ' ' | ((uint16_t)current_color << 8);
+        update_cursor();
+
+        return;
+    }
+    else if (c == '\n')
     {
         cursor_col = 0;
         cursor_row++;
@@ -144,6 +167,75 @@ void vga_puts(const char *s)
 {
     while (*s)
         vga_putchar(*s++);
+}
+
+void vga_putchar_at(int row, int col, char c)
+{
+    volatile uint16_t *vga = VGA_BASE;
+
+    if (row < 0 || row >= VGA_ROWS)
+        return;
+
+    if (col < 0 || col >= VGA_COLS)
+        return;
+
+    vga[row * VGA_COLS + col] = (uint8_t)c | ((uint16_t)current_color << 8);
+}
+
+void vga_draw_centered_ascii(const char *art)
+{
+    int lines = 1;
+    int max_width = 0;
+    int current_width = 0;
+
+    for (const char *p = art; *p; p++)
+    {
+        if (*p == '\n')
+        {
+            if (current_width > max_width)
+                max_width = current_width;
+
+            current_width = 0;
+            lines++;
+        }
+        else
+        {
+            current_width++;
+        }
+    }
+
+    if (current_width > max_width)
+        max_width = current_width;
+
+    int start_row = (VGA_ROWS - lines) / 2;
+
+    int row = start_row;
+
+    const char *line_start = art;
+
+    while (*line_start)
+    {
+        int line_len = 0;
+
+        while (line_start[line_len] && line_start[line_len] != '\n')
+        {
+            line_len++;
+        }
+
+        int start_col = (VGA_COLS - line_len) / 2;
+
+        for (int i = 0; i < line_len; i++)
+        {
+            vga_putchar_at(row, start_col + i, line_start[i]);
+        }
+
+        row++;
+
+        line_start += line_len;
+
+        if (*line_start == '\n')
+            line_start++;
+    }
 }
 
 void vga_set_color(uint8_t color)
@@ -229,6 +321,20 @@ void bootloader_main(uint32_t boot_drive)
     vga_set_color(COLOR_YELLOW_ON_BLACK);
     vga_puts("\nKernel would start here. System halted.\n");
     vga_set_color(COLOR_WHITE_ON_BLACK);
+
+    //vga_set_color(COLOR_WHITE_ON_RED);
+    //print_petya_art();
+
+    vga_set_color(COLOR_RED_ON_BLACK);
+    print_petya_art();
+
+    vga_putchar('\n');
+
+    vga_puts("Enter key: ");
+    char key[64];
+    keyboard_readline(key, sizeof(key));
+
+    vga_puts("\nOK!\n");
 
     __asm__ volatile ("cli\n.Lhang: hlt\njmp .Lhang\n");
     __builtin_unreachable();

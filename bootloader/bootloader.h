@@ -14,6 +14,8 @@ typedef unsigned long long uint64_t;
 void vga_clear(void);
 void vga_putchar(char c);
 void vga_puts(const char *s);
+void vga_putchar_at(int row, int col, char c);
+void vga_draw_centered_ascii(const char *art);
 void vga_set_color(uint8_t color);
 void vga_put_dec(uint32_t n);
 void vga_put_hex(uint32_t n);
