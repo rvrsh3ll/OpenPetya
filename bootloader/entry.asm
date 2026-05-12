@@ -49,7 +49,6 @@ print_string:
     ret
 
 ; GDT
-
 gdt_start:
 
 gdt_null:
