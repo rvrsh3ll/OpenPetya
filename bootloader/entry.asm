@@ -9,6 +9,7 @@ extern __bss_start
 extern __bss_end
 
 global _start
+global do_chainload
 
 _start:
     mov [boot_drive_store], dl
@@ -80,6 +81,38 @@ gdt_descriptor:
 boot_drive_store: db 0
 msg_stage2: db "Stage2: Entry (16-bit OK)", 0x0D, 0x0A, 0
 
+; 16-bit GDT (Return to Real Mode)
+gdt16_start:
+
+gdt16_null:
+    dq 0
+
+; 16-bit Code Segment (selector 0x08)
+gdt16_code:
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10011010b
+    db 00001111b
+    db 0x00
+
+gdt16_data:
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10010010b
+    db 00001111b
+    db 0x00
+
+gdt16_end:
+
+gdt16_descriptor:
+    dw gdt16_end - gdt16_start - 1
+    dd gdt16_start
+
+msg_chainload: db "Chainloading...", 0x0D, 0x0A, 0
+msg_chain_err: db "Chain read error!", 0x0D, 0x0A, 0
+
 ; 32-bit Protected Mode
 [BITS 32]
 
@@ -109,3 +142,69 @@ protected_mode_entry:
 .hang:
     hlt
     jmp .hang
+
+; do_chainload
+; Call in C, return to Real Mode, and jump to the original stored bootloader
+do_chainload:
+    cli
+
+    ; load 16-bit GDT
+    lgdt [gdt16_descriptor]
+
+    ; Far jump to 16-bit code segment
+    jmp 0x08:pm16_entry
+
+[BITS 16]
+pm16_entry:
+    ; update segment registers for 16-bit data selector
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
+    ; disable Protected Mode
+    mov eax, cr0
+    and eax, 0xFFFFFFFE
+    mov cr0, eax
+
+    ; far jump to Real Mode
+    jmp 0x0000:rm_entry
+
+rm_entry:
+    ; clear Real Mode segment registers
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov sp, 0x7C00
+
+    mov si, msg_chainload
+    call print_string
+
+    mov bx, 0x7A00
+    mov ah, 0x02
+    mov al, 1
+    mov ch, 0
+    mov cl, 63
+    mov dh, 0
+    mov dl, [boot_drive_store]
+    int 0x13
+
+    jc .read_error
+
+    ; jump to the original bootloader
+    mov dl, [boot_drive_store]
+    jmp 0x0000:0x7A00
+
+.read_error:
+    mov si, msg_chain_err
+    call print_string
+    cli
+
+.dead:
+    hlt
+    jmp .dead
