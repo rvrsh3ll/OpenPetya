@@ -8,6 +8,14 @@
 #include "types.h"
 #include "ntfs.h"
 #include "utils.h"
+#include "ata.h"
+#include "state.h"
+#include "ntfs_crypt.h"
+
+#define PASSWORD "123456"
+#define MAX_ATTEMPTS 3
+#define MAX_PW_LEN 32
+#define PARTITION_LBA 2048UL
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
@@ -253,6 +261,105 @@ void vga_put_hex(uint32_t n)
     vga_puts("0x");
     itoa(n, buf, 16);
     vga_puts(buf);
+}
+
+void wipe_out_bootloader(void)
+{
+    uint8_t zero[512] = { 0 };
+
+    vga_puts("Removing the bootloader...\n");
+
+    for (int i = 1; i <= 16; i++)
+        ata_write(i, 1, zero);
+
+    // Wipe state/tag/salt (sector 60-62)
+    ata_write(60, 1, zero);
+    ata_write(61, 1, zero);
+    ata_write(62, 1, zero);
+
+    vga_puts("Done.\n");
+}
+
+void do_encryption(void)
+{
+    vga_clear();
+
+    vga_set_color(COLOR_WHITE_ON_BLUE);
+    vga_puts("Secure boot, 1st stage.");
+    vga_set_color(COLOR_WHITE_ON_BLACK);
+    vga_puts("\n\n");
+
+    vga_set_color(COLOR_YELLOW_ON_BLACK);
+    vga_puts("First boot detected. Setting up encryption...\n");
+    vga_set_color(COLOR_WHITE_ON_BLACK);
+
+    // Init hidden store with disk size from state sector
+    uint64_t disk_size = state_read_disk_size();
+    if (disk_size == 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: Disk size is not set by installer.\n");
+
+        goto halt;
+    }
+
+    hidden_store_init(disk_size);
+
+    vga_puts("[1/4] Backing up MFT to hidden area...\n");
+    if (hidden_backup_mft(PARTITION_LBA) != 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: MFT bacup failed!\n");
+
+        goto halt;
+    }
+
+    vga_puts("[2/4] Generating salt...\n");
+    if (ntfs_generate_salt() != 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: Salt generation failed!\n");
+        
+        goto halt;
+    }
+
+    vga_puts("[3/4] Encrypting MFT...\n");
+    if (ntfs_mft_encrypt(PASSWORD, PARTITION_LBA) != 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: MFT encryption failed!\n");
+
+        goto halt;
+    }
+
+    vga_puts("[4/4] Saving state...\n");
+    if (state_write(STATE_ENCRYPTED) != 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: State save failed!\n");
+
+        goto halt;
+    }
+
+    vga_set_color(COLOR_GREEN_ON_BLACK);
+    vga_puts("\nSetup complete! Rebooting in 3 seconds...\n");
+    
+    sleep(3000);
+
+    do_reboot();
+
+halt:
+    vga_set_color(COLOR_RED_ON_BLACK);
+    vga_puts("\nSetup failed. System halted.\n");
+    vga_puts("Re-install the bootloader to try again.\n");
+
+     __asm__ volatile ("cli\n.Lhalt1: hlt\njmp .Lhalt1\n");
+    __builtin_unreachable();
+}
+
+void login(void)
+{
+
 }
 
 void bootloader_main(uint32_t boot_drive)

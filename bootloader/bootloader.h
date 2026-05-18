@@ -18,6 +18,7 @@ void vga_put_dec(uint32_t n);
 void vga_put_hex(uint32_t n);
 
 void do_chainload(void) __attribute__((noreturn));
+void do_reboot(void) __attribute__((noreturn));
 void bootloader_main(uint32_t boot_drive);
 
 #endif

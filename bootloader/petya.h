@@ -4,6 +4,7 @@
 #define PETYA_H
 
 #include "types.h"
+#include "hidden_store.h"
 
 #define PETYA_ART \
 "             uu$$$$$$$$$$$uu                   \n" \

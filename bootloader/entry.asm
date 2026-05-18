@@ -10,6 +10,7 @@ extern __bss_end
 
 global _start
 global do_chainload
+global do_reboot
 
 _start:
     mov [boot_drive_store], dl
@@ -153,6 +154,19 @@ do_chainload:
 
     ; Far jump to 16-bit code segment
     jmp 0x08:pm16_entry
+
+do_reboot:
+    cli
+.wait_kbc:
+    in al, 0x64
+    test al, 0x02
+    jnz .wait_kbc
+    mov al, 0xFE
+    out 0x64, al
+
+    cli
+    hlt
+    jmp do_reboot
 
 [BITS 16]
 pm16_entry:
