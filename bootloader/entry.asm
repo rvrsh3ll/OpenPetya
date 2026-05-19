@@ -155,6 +155,7 @@ do_chainload:
     ; Far jump to 16-bit code segment
     jmp 0x08:pm16_entry
 
+[BITS 32]
 do_reboot:
     cli
 .wait_kbc:

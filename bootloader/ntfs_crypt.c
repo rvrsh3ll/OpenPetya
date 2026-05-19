@@ -13,11 +13,10 @@ static void prng_seed(void)
 {
     uint32_t val = 0;
     __asm__ volatile (
-        "xor %%eax %%eax\n"
+        "xor %%eax, %%eax\n"
         "in %%dx, %%al\n"
         : "=a"(val) : "d"(0x70)
     );
-
     prng_state = val ^ 0xDEADBEEF;
 }
 

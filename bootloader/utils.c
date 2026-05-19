@@ -43,3 +43,9 @@ void sleep(uint32_t ms)
         }
     }
 }
+
+void zero_buffer(char *buffer, int len)
+{
+    for (int i = 0; i < len; i++)
+        buffer[i] = 0;
+}
