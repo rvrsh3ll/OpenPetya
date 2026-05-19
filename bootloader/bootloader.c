@@ -453,7 +453,7 @@ void bootloader_main(uint32_t boot_drive)
     (void)boot_drive;
 
     vga_clear();
-    vga_puts("HI");
+    vga_puts("HI\n");
 
     uint8_t s = state_read();
     if (s == STATE_NOT_SETUP)
