@@ -83,32 +83,32 @@ int hidden_backup_mft(uint32_t partition_lba)
 
             return -1;
         }
-
-        // Backup VBR
-        if (ata_read(partition_lba, 1, sector_buffer) != 0)
-            return -1;
-
-        if (ata_write(vbr_backup_lba(), 1, sector_buffer) != 0)
-            return -1;
-
-        HiddenHeader hdr = { 0 };
-        hdr.magic = HIDDEN_MAGIC;
-        hdr.partition_lba = partition_lba;
-        hdr.mft_lba = mft_lba;
-        hdr.mft_sector_count = MFT_BACKUP_SECTORS;
-        hdr.disk_total_sectors = disk_end_lba + 1;
-
-        uint8_t hdr_sector[512] = { 0 };
-        for (uint32_t i = 0; i < sizeof(HiddenHeader); i++)
-            hdr_sector[i] = ((uint8_t *)&hdr)[i];
-
-        if (ata_write(header_lba(), 1, hdr_sector) != 0)
-            return -1;
-
-        vga_puts("MFT backup successfully.\n");
-
-        return 0;
     }
+
+    // Backup VBR
+    if (ata_read(partition_lba, 1, sector_buffer) != 0)
+        return -1;
+
+    if (ata_write(vbr_backup_lba(), 1, sector_buffer) != 0)
+        return -1;
+
+    HiddenHeader hdr = { 0 };
+    hdr.magic = HIDDEN_MAGIC;
+    hdr.partition_lba = partition_lba;
+    hdr.mft_lba = mft_lba;
+    hdr.mft_sector_count = MFT_BACKUP_SECTORS;
+    hdr.disk_total_sectors = disk_end_lba + 1;
+
+    uint8_t hdr_sector[512] = { 0 };
+    for (uint32_t i = 0; i < sizeof(HiddenHeader); i++)
+        hdr_sector[i] = ((uint8_t *)&hdr)[i];
+
+    if (ata_write(header_lba(), 1, hdr_sector) != 0)
+        return -1;
+
+    vga_puts("MFT backup successfully.\n");
+
+    return 0;
 }
 
 int hidden_restore_mft(uint32_t partition_lba)

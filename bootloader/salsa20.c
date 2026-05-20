@@ -8,15 +8,19 @@ Learned from:
 
 #include "salsa20.h"
 
-// Rotate left 32-bit
-#define ROTL32(v, n) ((v << n) | v >> (32 -n))
+static inline uint32_t rotl32(uint32_t v, int n)
+{
+    return (v << n) | (v >> (32 - n));
+}
 
-// do Quarter Round
-#define QR(a, b, c, d) \
-    b ^= ROTL32(a + d, 7); \
-    c ^= ROTL32(b + a,  9); \
-    d ^= ROTL32(c + b, 13); \
-    a ^= ROTL32(d + c, 18);
+static inline void qr(uint32_t *a, uint32_t *b,
+                      uint32_t *c, uint32_t *d)
+{
+    *b ^= rotl32(*a + *d, 7);
+    *c ^= rotl32(*b + *a, 9);
+    *d ^= rotl32(*c + *b, 13);
+    *a ^= rotl32(*d + *c, 18);
+}
 
 /// @brief 
 /// @param out 
@@ -30,17 +34,17 @@ static void salsa20_block(uint32_t out[16], const uint32_t in[16])
     // 20 rounds (10 double rounds)
     for (int i = 0; i < 10; i++)
     {
-        // colum rounds
-        QR(s[0], s[4], s[8], s[12]);
-        QR(s[5], s[9], s[13], s[1]);
-        QR(s[10], s[14], s[2], s[6]);
-        QR(s[15], s[3], s[7], s[11]);
+        // column rounds
+        qr(&s[0],  &s[4],  &s[8],  &s[12]);
+        qr(&s[5],  &s[9],  &s[13], &s[1]);
+        qr(&s[10], &s[14], &s[2],  &s[6]);
+        qr(&s[15], &s[3],  &s[7],  &s[11]);
 
         // row rounds
-        QR(s[0], s[1], s[2], s[3]);
-        QR(s[5], s[6], s[7], s[4]);
-        QR(s[10], s[11], s[8], s[9]);
-        QR(s[15], s[12], s[13], s[14]);
+        qr(&s[0],  &s[1],  &s[2],  &s[3]);
+        qr(&s[5],  &s[6],  &s[7],  &s[4]);
+        qr(&s[10], &s[11], &s[8],  &s[9]);
+        qr(&s[15], &s[12], &s[13], &s[14]);
     }
 
     for (int i = 0; i < 16; i++)

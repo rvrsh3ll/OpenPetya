@@ -144,6 +144,8 @@ protected_mode_entry:
     hlt
     jmp .hang
 
+[BITS 32]
+
 ; do_chainload
 ; Call in C, return to Real Mode, and jump to the original stored bootloader
 do_chainload:

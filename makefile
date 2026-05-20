@@ -60,9 +60,9 @@ $(STAGE2): $(ALL_OBJS)
 	$(LD) -m elf_i386 -T $(BL_DIR)/linker.ld -o $@ --oformat binary $^
 
 	@size=$$(stat -c%s $@); \
-	if [ $$size -lt 8192 ]; then \
+	if [ $$size -lt 20480 ]; then \
 		echo "[*] Padding Stage2 to 8192 bytes..."; \
-		dd if=/dev/zero bs=1 count=$$((8192-$$size)) >> $@ 2>/dev/null; \
+		dd if=/dev/zero bs=1 count=$$((20480-$$size)) >> $@ 2>/dev/null; \
 	fi
 
 	@echo "[+] Stage2 payload ready: $$(stat -c%s $@) bytes"

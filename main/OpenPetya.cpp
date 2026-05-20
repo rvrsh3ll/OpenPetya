@@ -571,6 +571,117 @@ UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
     return (UINT64)geo.DiskSize.QuadPart / 512;
 }
 
+std::string fnInputPassword(const std::string& szPrompt)
+{
+    std::cout << szPrompt;
+
+    std::string szPass;
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(hStdin, &mode);
+
+    // Disable echo
+    SetConsoleMode(hStdin, mode & ~ENABLE_ECHO_INPUT);
+
+    char ch;
+    DWORD read = 0;
+    while (ReadConsoleA(hStdin, &ch, 1, &read, nullptr))
+    {
+        if (ch == '\r')
+        {
+            // consume '\n'
+            ReadConsoleA(hStdin, &ch, 1, &read, nullptr);
+            break;
+        }
+
+        if (ch == '\b' && !szPass.empty())
+        {
+            szPass.pop_back();
+            std::cout << "\b \b";
+        }
+        else if (ch != '\b')
+        {
+            szPass += ch;
+            std::cout << '*';
+        }
+    }
+
+    // Restore echo
+    SetConsoleMode(hStdin, mode);
+    std::cout << "\n";
+
+    return szPass;
+}
+
+bool fnbWritePassword(const std::wstring& szDrivePath, const std::string& szPassword)
+{
+    std::cout << "\n[Write password] Storing to sector 59...\n";
+
+    if (szPassword.empty())
+    {
+        std::cerr << "\tError: password cannot be empty.\n";
+        return false;
+    }
+
+    if (szPassword.size() > 64)
+    {
+        std::cerr << "\tError: password is too long (max 64 chars)\n";
+        return false;
+    }
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    // Build sector
+    std::vector<uint8_t> abSector(SECTOR_SIZE, 0);
+
+    // magic
+    uint32_t magic = 0x50415353UL; // "PASS"
+    memcpy(abSector.data(), &magic, 4);
+
+    // length
+    abSector[4] = (uint8_t)szPassword.size();
+
+    // password bytes
+    memcpy(abSector.data() + 5, szPassword.data(), szPassword.size());
+
+    if (!disk.fnbWriteSectors(59, abSector))
+        return false;
+
+    std::cout << "\tPassword is written to sector 59.\n";
+    std::cout << "\tIt will be erased by bootloader after first boot.\n";
+
+    // Zero password string from memory.
+    volatile char *p = (volatile char *)szPassword.data();
+    for (size_t i = 0; i < szPassword.size(); i++)
+        p[i] = 0;
+
+    return true;
+}
+
+bool fnbClearMetadata(const std::wstring& szDrivePath)
+{
+    std::cout << "\n[Clear metadata] Wiping sectors 59-63...\n";
+
+    clsDiskHandle disk;
+    if (!disk.fnbOpen(szDrivePath, true))
+        return false;
+
+    std::vector<uint8_t> abZero(SECTOR_SIZE, 0);
+    for (int s = 59; s < 64; s++)
+    {
+        if (!disk.fnbWriteSectors(s, abZero))
+        {
+            return false;
+        }
+    }
+
+    std::cout << "\tDone.\n";
+
+    return true;
+}
+
 void fnPrintUsage(const char* szProg)
 {
     std::wcout  << "\nUsage: " << szProg << " [options]\n\n"
@@ -662,7 +773,7 @@ int _tmain(int argc, char *argv[])
         }
         else
         {
-            std::cerr << "Unknown option: " << arg << L"\n";
+            std::cerr << "Unknown option: " << arg << std::endl;
             fnPrintUsage(argv[0]);
 
             return 1;
@@ -687,7 +798,7 @@ int _tmain(int argc, char *argv[])
     // All other operations need --drive
     if (nIdxDrive < 0)
     {
-        std::wcerr << "Error: --drive N is required\n";
+        std::wcerr << L"Error: --drive N is required\n";
         fnPrintUsage(argv[0]);
 
         return 1;
@@ -700,34 +811,82 @@ int _tmain(int argc, char *argv[])
     bool bRet = true;
     if (bInstall)
     {
-        UINT64 nTotalSectors = fnGetDiskTotalSectors(szDrivePath);
-
         std::cout << "\nFull Install\n";
         std::cout << "\tMBR file: " << szMbrPath << "\n";
-        std::cout << "\tStage file: " << szStage2Path << "\n";
+        std::cout << "\tStage2 file: " << szStage2Path << "\n";
 
-        if (!fnbConfirm("This will modify the MBR of PhysicalDrive" + std::to_string(nIdxDrive) + ". Partition table will be preserved. Continue?"))
+        UINT64 nTotalSectors = fnGetDiskTotalSectors(szDrivePath);
+        if (nTotalSectors == 0)
         {
-            std::cout << "\tCancelled.\n";
+            std::cerr << "Cannot get disk size!\n";
+            return 1;
+        }
+
+        printf("\tDisk: %d sectors (%d MB)\n", nTotalSectors, nTotalSectors / 2048);
+        printf("\tHidden backup will be at sector %d\n\n", nTotalSectors - 30);
+
+        std::string szPass1, szPass2;
+        while (true)
+        {
+            szPass1 = fnInputPassword("Set bootloader password: ");
+            szPass2 = fnInputPassword("Confirm password: ");
+
+            if (szPass1 == szPass2 && !szPass1.empty())
+                break;
+
+            if (szPass1.empty())
+                std::cerr << "Error: Password cannot be empty.\n\n";
+            else
+                std::cerr << "Error: Passwords do not match, try again\n\n";
+        }
+
+        std::cout << "Password set.\n";
+
+        printf("\nThis will modify PhysicalDrive%d.\n", nIdxDrive);
+        printf("Partition table will be preserved.\n");
+        printf("Continue? (yes/no): ");
+        std::string szAns;
+        std::getline(std::cin, szAns);
+
+        if (szAns != "yes" && szAns != "y")
+        {
+            printf("Cancelled.\n");
+
+            // Zero password
+            for (char& c : szPass1)
+                c = 0;
+            for (char& c : szPass2)
+                c = 0;
 
             return 0;
         }
+
+        // Clear old metadata
+        bRet = bRet && fnbClearMetadata(szDrivePath);
 
         // Backup MBR to file
         szBackupPath = "original_mbr_" + std::to_string(nIdxDrive) + ".bin";
         bRet = bRet && fnbBackupMBR(szDrivePath, szBackupPath);
 
-        // Save original MBR to sector 63 for chainloading
-        bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
+        // Backup chainload
+        bRet = bRet && fnbSaveChainloadBackup(szDrivePath);
 
         // Write custom MBR boot code
         bRet = bRet && fnbWriteMBR(szDrivePath, szMbrPath);
 
-        // Write stage2
+        // Write stage 2
         bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
 
         // Write sector 60
         bRet = bRet && fnbWriteDiskSize(szDrivePath, nTotalSectors);
+
+        // Write password to sector 59
+        bRet = bRet && fnbWritePassword(szDrivePath, szPass1);
+
+        for (char& c: szPass1)
+            c = 0;
+        for (char& c: szPass2)
+            c = 0;
 
         // Validate
         if (bRet)
