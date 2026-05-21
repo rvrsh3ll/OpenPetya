@@ -7,7 +7,18 @@
 
 #include "types.h"
 
+/// @brief 
+/// @param lba 
+/// @param count 
+/// @param buffer 
+/// @return 
 int ata_read(uint32_t lba, uint8_t count, uint8_t *buffer);
+
+/// @brief 
+/// @param lba 
+/// @param count 
+/// @param buffer 
+/// @return 
 int ata_write(uint32_t lba, uint8_t count, const uint8_t *buffer);
 
 #endif

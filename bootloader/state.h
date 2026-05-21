@@ -19,8 +19,19 @@ typedef struct {
     uint8_t padding[496];
 } __attribute__ ((packed)) stBootState;
 
+/// @brief Read state from disk
+/// @param  
+/// @return 
 uint8_t state_read(void);
+
+/// @brief Write state into disk
+/// @param new_state 
+/// @return 
 int state_write(uint8_t new_state);
+
+/// @brief Read disk size
+/// @param  
+/// @return 
 uint64_t state_read_disk_size(void);
 
 #endif

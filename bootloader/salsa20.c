@@ -13,8 +13,7 @@ static inline uint32_t rotl32(uint32_t v, int n)
     return (v << n) | (v >> (32 - n));
 }
 
-static inline void qr(uint32_t *a, uint32_t *b,
-                      uint32_t *c, uint32_t *d)
+static inline void qr(uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
 {
     *b ^= rotl32(*a + *d, 7);
     *c ^= rotl32(*b + *a, 9);

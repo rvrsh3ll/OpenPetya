@@ -18,8 +18,15 @@ typedef struct
     uint8_t padding[443];
 } __attribute__ ((packed)) stPasswordStore;
 
+/// @brief 
+/// @param buffer 
+/// @param max_len 
+/// @return 
 int pwstore_read(char *buffer, int max_len);
 
+/// @brief 
+/// @param  
+/// @return 
 int pwstore_erase(void);
 
 #endif

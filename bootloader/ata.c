@@ -5,6 +5,7 @@
 #include "ata.h"
 #include "io.h"
 #include "types.h"
+#include "utils.h"
 #include "bootloader.h"
 
 // Reference: https://wiki.osdev.org/ATA_PIO_Mode#Addressing_Modes
@@ -65,6 +66,8 @@ int ata_read(uint32_t lba, uint8_t count, uint8_t *buffer)
             ptr[i] = inw(ATA_DATA);
 
         ptr += 256;
+
+        ata_wait();
     }
 
     return 0;
@@ -92,6 +95,7 @@ int ata_write(uint32_t lba, uint8_t count, const uint8_t *buffer)
 
         ptr += 256;
         outb(ATA_CMD, 0xE7);
+
         ata_wait();
     }
 

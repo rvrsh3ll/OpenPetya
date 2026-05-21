@@ -551,8 +551,7 @@ bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
     uint32_t read_magic = *(uint32_t *)(abCheck.data() + 0);
     uint64_t read_size  = *(uint64_t *)(abCheck.data() + 8);
 
-    printf("\tVerify: magic=0x%08X state=0x%02X disk_sectors=%llu\n",
-           read_magic, abCheck[4], read_size);
+    printf("\tVerify: magic=0x%08X state=0x%02X disk_sectors=%llu\n", read_magic, abCheck[4], read_size);
 
     if (read_magic != 0x424F4F54UL || read_size != nTotalSectors)
     {
