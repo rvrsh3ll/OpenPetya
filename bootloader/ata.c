@@ -5,6 +5,7 @@
 #include "ata.h"
 #include "io.h"
 #include "types.h"
+#include "bootloader.h"
 
 // Reference: https://wiki.osdev.org/ATA_PIO_Mode#Addressing_Modes
 #define ATA_DATA        0x1F0
@@ -55,7 +56,10 @@ int ata_read(uint32_t lba, uint8_t count, uint8_t *buffer)
     for (int s = 0; s < count; s++)
     {
         if (ata_wait_drq() != 0)
+        {
+            vga_puts("ata_wait_drq(): ERROR!\n");
             return -1;
+        }
 
         for (int i = 0; i < 256; i++)
             ptr[i] = inw(ATA_DATA);

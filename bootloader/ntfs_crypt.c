@@ -42,7 +42,7 @@ static int read_salt(uint8_t salt[SALT_SIZE])
         return -1;
     }
 
-    for (int i = 0; i < SALT_SECTOR; i++)
+    for (int i = 0; i < SALT_SIZE; i++)
         salt[i] = sector[i];
 
     return 0;
@@ -319,7 +319,7 @@ int ntfs_mft_decrypt(const char *password, uint32_t partition_lba)
 
     vga_puts("]\n");
 
-    validate_save_tag(key);
+    //validate_save_tag(key);
 
     for (int i = 0; i < 32; i++)
         key[i] = 0;

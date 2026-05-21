@@ -463,7 +463,7 @@ bool fnbRestoreMBR(const std::wstring& szDrivePath, const std::string& szBackupF
 
     std::cout << "\tOriginal MBR is restored successfully.\n";
 
-    return false;
+    return true;
 }
 
 bool fnbValidate(const std::wstring& szDrivePath)
@@ -543,8 +543,24 @@ bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
     if (!disk.fnbWriteSectors(60, abStateSector))
         return false;
 
-    std::cout << "\tDisk size is written to state sector.\n";
+    // Verify
+    std::vector<uint8_t> abCheck;
+    if (!disk.fnbReadSectors(60, 1, abCheck))
+        return false;
 
+    uint32_t read_magic = *(uint32_t *)(abCheck.data() + 0);
+    uint64_t read_size  = *(uint64_t *)(abCheck.data() + 8);
+
+    printf("\tVerify: magic=0x%08X state=0x%02X disk_sectors=%llu\n",
+           read_magic, abCheck[4], read_size);
+
+    if (read_magic != 0x424F4F54UL || read_size != nTotalSectors)
+    {
+        std::cerr << "\tERROR: State sector verify FAILED!\n";
+        return false;
+    }
+
+    std::cout << "\tState sector OK.\n";
     return true;
 }
 

