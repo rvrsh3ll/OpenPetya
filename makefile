@@ -98,6 +98,12 @@ img: $(MBR_BIN) $(STAGE2)
 	@echo "[*] [5/5] Deploying Stage2 loader to sector 1..."
 	dd if=$(STAGE2) of=$(DISK_IMG) seek=1 bs=512 conv=notrunc 2>/dev/null
 
+	@echo "[*] Writing state sector (sector 60) for QEMU..."
+	python3 -c "import struct,sys; s=bytearray(512); struct.pack_into('<I',s,0,0x424F4F54); s[4]=0x00; struct.pack_into('<Q',s,8,200*1024*2); sys.stdout.buffer.write(bytes(s))" | dd of=$(DISK_IMG) seek=60 bs=512 count=1 conv=notrunc 2>/dev/null
+
+	@echo "[*] Writing password sector (sector 59) for QEMU testing..."
+	python3 -c "import struct,sys; s=bytearray(512); struct.pack_into('<I',s,0,0x50415353); pw=b'123456'; s[4]=len(pw); s[5:5+len(pw)]=pw; sys.stdout.buffer.write(bytes(s))" | dd of=$(DISK_IMG) seek=59 bs=512 count=1 conv=notrunc 2>/dev/null
+
 	@echo ""
 	@echo "[+] Disk image successfully generated: $(DISK_IMG)"
 	@parted -s $(DISK_IMG) print
