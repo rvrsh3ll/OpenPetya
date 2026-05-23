@@ -377,7 +377,7 @@ void do_encryption(void)
     if (hidden_backup_mft(partition_lba) != 0)
     {
         vga_set_color(COLOR_RED_ON_BLACK);
-        vga_puts("ERROR: MFT bacup failed!\n");
+        vga_puts("ERROR: MFT backup failed!\n");
 
         goto halt;
     }
