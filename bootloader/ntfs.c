@@ -84,7 +84,7 @@ static void dump_mft_entry(uint32_t entry_num, uint32_t mft_lba, uint8_t sectors
         if (attr->type == ATTR_FILE_NAME && !attr->non_resident)
         {
             Attr_Resident *res = (Attr_Resident *)(ptr + sizeof(Attr_Header));
-            Attr_FileName *fn = (Attr_FileName *)(ptr + sizeof(Attr_Header) + sizeof(Attr_Resident));
+            Attr_FileName *fn = (Attr_FileName *)(ptr + res->value_offset);
 
             if (fn->namespace == 1 || fn->namespace == 3)
             {
@@ -150,7 +150,7 @@ void ntfs_read_mft(uint32_t partition_lba)
     vga_put_hex((uint32_t)vbr->mft_cluster);
     vga_putchar('\n');
 
-    uint32_t mft_lba = partition_lba + (uint32_t)vbr->mft_cluster + vbr->sectors_per_cluster;
+    uint32_t mft_lba = partition_lba + (uint32_t)(vbr->mft_cluster * vbr->sectors_per_cluster);
 
     vga_puts("MFT LBA: ");
     vga_put_hex(mft_lba);

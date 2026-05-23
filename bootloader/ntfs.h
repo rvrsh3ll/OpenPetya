@@ -14,21 +14,41 @@
 #define MFT_FLAGS_DIRECTORY 0x02
 
 // VBR (Volume Boot Record), the first sector of NTFS partition
-typedef struct {
+typedef struct __attribute__((packed))
+{
     uint8_t jump[3];
     uint8_t oem_id[8];
+
     uint16_t bytes_per_sector;
     uint8_t sectors_per_cluster;
-    uint8_t reserved[26];
+
+    uint16_t reserved_sectors;
+    uint8_t zeros1[3];
+
+    uint16_t unused1;
+    uint8_t media_descriptor;
+    uint16_t zeros2;
+
+    uint16_t sectors_per_track;
+    uint16_t heads;
+    uint32_t hidden_sectors;
+    uint32_t unused2;
+    uint32_t unused3;
+
     uint64_t total_sectors;
     uint64_t mft_cluster;
     uint64_t mft_mirror_cluster;
+
     int8_t clusters_per_mft_record;
-    uint8_t reserved2[3];
-    int8_t clusters_per_index;
-    uint8_t reserved3[3];
+    uint8_t reserved0[3];
+
+    int8_t clusters_per_index_record;
+    uint8_t reserved1[3];
+
     uint64_t volume_serial;
-}   __attribute__((packed)) NTFS_VBR;
+    uint32_t checksum;
+
+} NTFS_VBR;
 
 // MFT Entry header
 typedef struct {

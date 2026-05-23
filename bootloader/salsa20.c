@@ -1,9 +1,10 @@
 // salsa20.c
 /*
-Learned from:
+References / Learning Resources:
     - https://github.com/Daeinar/salsa20/blob/master/salsa.py
     - https://cr.yp.to/snuffle/salsafamily-20071225.pdf
     - https://asecuritysite.com/symmetric/salsa20
+    - Serious Cryptography (2nd Edition), Jean-Philippe Aumasson
 */
 
 #include "salsa20.h"

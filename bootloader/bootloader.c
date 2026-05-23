@@ -15,7 +15,6 @@
 #define PASSWORD "123456"
 #define MAX_ATTEMPTS 3
 #define MAX_PW_LEN 32
-#define PARTITION_LBA 2048UL
 
 #define VGA_BASE ((volatile uint16_t *)0xB8000)
 #define VGA_COLS 80
@@ -105,6 +104,64 @@ static void get_cpu_vendor(char *out) {
     p[2] = ecx;
     
     out[12] = '\0';
+}
+
+static uint32_t find_ntfs_partition_lba(void)
+{
+    uint8_t mbr[512];
+    if (ata_read(0, 1, mbr) != 0)
+    {
+        vga_puts("Cannot read MBR!\n");
+        return 0;
+    }
+
+    // Check boot signature
+    if (mbr[510] != 0x55 || mbr[511] != 0xAA)
+    {
+        vga_puts("Invalid MBR signature!\n");
+        return 0;
+    }
+
+    // Scan partition table (4 entries at offset 0x1BE, 16 bytes each)
+    uint32_t best_lba = 0;
+    uint32_t best_size = 0;
+
+    for (int i = 0; i < 4; i++)
+    {
+        uint8_t *entry = mbr + 0x1BE + i * 16;
+        uint8_t  type  = entry[4];
+        uint32_t lba   = entry[8]  | ((uint32_t)entry[9]  << 8)
+                       | ((uint32_t)entry[10] << 16) | ((uint32_t)entry[11] << 24);
+        uint32_t size  = entry[12] | ((uint32_t)entry[13] << 8)
+                       | ((uint32_t)entry[14] << 16) | ((uint32_t)entry[15] << 24);
+
+        if (type != 0x07)   // 0x07 = NTFS/exFAT
+            continue;
+
+        vga_puts("  Found NTFS partition: LBA=");
+        vga_put_dec(lba);
+        vga_puts(" size=");
+        vga_put_dec(size);
+        vga_putchar('\n');
+
+        // Pick the largest NTFS partition (most likely to be Windows)
+        if (size > best_size)
+        {
+            best_size = size;
+            best_lba  = lba;
+        }
+    }
+
+    if (best_lba == 0)
+        vga_puts("No NTFS partition found!\n");
+    else
+    {
+        vga_puts("Selected partition LBA=");
+        vga_put_dec(best_lba);
+        vga_putchar('\n');
+    }
+
+    return best_lba;
 }
 
 void vga_clear(void)
@@ -303,10 +360,20 @@ void do_encryption(void)
         goto halt;
     }
 
+    vga_puts("Detecting NTFS partition...\n");
+    uint32_t partition_lba = find_ntfs_partition_lba();
+    if (partition_lba == 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: No NTFS partition found!\n");
+
+        goto halt;
+    }
+
     hidden_store_init(disk_size);
 
     vga_puts("[1/4] Backing up MFT to hidden area...\n");
-    if (hidden_backup_mft(PARTITION_LBA) != 0)
+    if (hidden_backup_mft(partition_lba) != 0)
     {
         vga_set_color(COLOR_RED_ON_BLACK);
         vga_puts("ERROR: MFT bacup failed!\n");
@@ -333,7 +400,7 @@ void do_encryption(void)
         goto halt;
     }
 
-    if (ntfs_mft_encrypt(password, PARTITION_LBA) != 0)
+    if (ntfs_mft_encrypt(password, partition_lba) != 0)
     {
         zero_buffer(password, sizeof(password));
 
@@ -344,7 +411,7 @@ void do_encryption(void)
     }
 
     zero_buffer(password, sizeof(password));
-    pwstore_erase();
+    //pwstore_erase();
 
     vga_puts("[4/4] Saving state...\n");
     if (state_write(STATE_ENCRYPTED) != 0)
@@ -355,10 +422,21 @@ void do_encryption(void)
         goto halt;
     }
 
+    uint8_t raw[512];
+    ata_read(60, 1, raw);
+    vga_puts("Final state check: magic=");
+    vga_put_hex(*(uint32_t *)raw);
+    vga_puts(" state=");
+    vga_put_hex(raw[4]);
+    vga_putchar('\n');
+
+    vga_puts("Rebooting...\n");
+    for (volatile uint32_t _i = 0; _i < 15000000; _i++);
+
     vga_set_color(COLOR_GREEN_ON_BLACK);
     vga_puts("\nSetup complete! Rebooting in 3 seconds...\n");
     
-    sleep(3000);
+    for (volatile uint32_t _i = 0; _i < 15000000; _i++);
 
     do_reboot();
 
@@ -384,6 +462,16 @@ void login(void)
     char input[MAX_PW_LEN];
     int attempts = 0;
 
+    vga_puts("Detecting NTFS partition...\n");
+    uint32_t partition_lba = find_ntfs_partition_lba();
+    if (partition_lba == 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("ERROR: No NTFS partition found!\n");
+
+        goto halt;
+    }
+
     while (attempts < MAX_ATTEMPTS)
     {
         vga_set_color(COLOR_YELLOW_ON_BLACK);
@@ -394,7 +482,7 @@ void login(void)
         vga_puts("Password: ");
         keyboard_readline(input, MAX_PW_LEN);
 
-        if (ntfs_mft_decrypt(input, PARTITION_LBA) == 0)
+        if (ntfs_mft_decrypt(input, partition_lba) == 0)
         {
             zero_buffer(input, MAX_PW_LEN);
 
@@ -406,14 +494,13 @@ void login(void)
             hidden_store_init(disk_size);
 
             vga_puts("[1/4] Restoring original MFT...\n");
-            if (hidden_restore_mft(PARTITION_LBA) != 0)
+            if (hidden_restore_mft(partition_lba) != 0)
             {
                 vga_set_color(COLOR_RED_ON_BLACK);
                 vga_puts("ERROR: MFT restore failed!\n");
                 vga_puts("System halted to prevent data loss.\n");
 
-                __asm__ volatile ("cli\n.Lhalt2: hlt\njmp .Lhalt2\n");
-                __builtin_unreachable();
+                goto halt;
             }
 
             vga_puts("[2/4] Restoring original MBR...\n");
@@ -460,13 +547,57 @@ void login(void)
 
         attempts++;
     }
+
+halt:
+    vga_puts("System halted.\n");
+    __asm__ volatile ("cli\n.Lhalt_login: hlt\njmp .Lhalt_login\n");
+    __builtin_unreachable();
 }
 
 void bootloader_main(uint32_t boot_drive)
 {
-    (void)boot_drive;
+    vga_clear();
+    ata_set_drive((uint8_t)boot_drive);
+
+    if (ata_init() != 0)
+    {
+        vga_set_color(COLOR_RED_ON_BLACK);
+        vga_puts("FATAL: ATA initialization failed!\n");
+        __asm__ volatile ("cli\n.Lhalt0: hlt\njmp .Lhalt0\n");
+    }
+
+    // Read and display raw state sector before deciding what to do
+    uint8_t raw[512];
+    if (ata_read(60, 1, raw) == 0)
+    {
+        vga_puts("State sector: magic=");
+        vga_put_hex(*(uint32_t *)raw);
+        vga_puts(" state=");
+        vga_put_hex(raw[4]);
+        vga_puts(" disk_sectors=");
+        vga_put_dec(*(uint32_t *)(raw + 8));
+        vga_putchar('\n');
+    }
+    else
+    {
+        vga_puts("State sector: READ FAILED\n");
+    }
+
+    vga_set_color(COLOR_WHITE_ON_BLACK);
+    vga_puts("BSS end: ");
+    vga_put_hex((uint32_t)&__bss_end);
+    vga_putchar('\n');
+    vga_puts("ESP: ");
+    uint32_t esp_val;
+    __asm__ volatile ("mov %%esp, %0" : "=r"(esp_val));
+    vga_put_hex(esp_val);
+    vga_putchar('\n');
 
     uint8_t s = state_read();
+    vga_puts("state_read() returned: ");
+    vga_put_hex(s);
+    vga_putchar('\n');
+
     if (s == STATE_NOT_SETUP)
         do_encryption();
     else

@@ -9,17 +9,24 @@
 
 STAGE2_LOAD_SEG  equ 0x0000
 STAGE2_LOAD_OFF  equ 0x8000
-STAGE2_SECTORS   equ 40
+
+; 64 sectors = 32KB
+STAGE2_SECTORS   equ 64
+
 STAGE2_START_LBA equ 1
+
+STACK_TOP        equ 0x7000
 
 start:
     cli
+
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
-    sti
+
+    mov sp, STACK_TOP
+
     jmp 0x0000:main
 
 main:
@@ -28,30 +35,40 @@ main:
     mov si, msg_mbr
     call print_string
 
+    ; Check INT13 Extensions
+    mov ah, 0x41
+    mov bx, 0x55AA
+    mov dl, [boot_drive]
+
+    int 0x13
+    jc no_ext
+
+    cmp bx, 0xAA55
+    jne no_ext
+
     mov si, msg_loading
     call print_string
 
-    mov ax, STAGE2_LOAD_SEG
-    mov es, ax
-    mov bx, STAGE2_LOAD_OFF
+    ; DAP structure
+    mov si, dap
 
-    mov ah, 0x02
-    mov al, STAGE2_SECTORS
-    mov ch, 0
-    mov cl, 2
-    mov dh, 0
+    mov ah, 0x42
     mov dl, [boot_drive]
-    int 0x13
 
+    int 0x13
     jc disk_error
-    cmp al, STAGE2_SECTORS
-    jne disk_error
 
     mov si, msg_ok
     call print_string
 
     mov dl, [boot_drive]
+
     jmp STAGE2_LOAD_SEG:STAGE2_LOAD_OFF
+
+no_ext:
+    mov si, msg_no_ext
+    call print_string
+    jmp hang
 
 disk_error:
     mov si, msg_disk_err
@@ -60,30 +77,48 @@ disk_error:
 
 hang:
     cli
+
+.hlt_loop:
     hlt
-    jmp hang
+    jmp .hlt_loop
 
 print_string:
     pusha
+
 .loop:
     lodsb
     test al, al
     jz .done
+
     mov ah, 0x0E
-    mov bh, 0x00
+    mov bh, 0
     mov bl, 0x07
+
     int 0x10
+
     jmp .loop
+
 .done:
     popa
     ret
 
-boot_drive:  db 0
+; Disk Address Packet
+dap:
+    db 0x10
+    db 0x00
+    dw STAGE2_SECTORS
+    dw STAGE2_LOAD_OFF
+    dw STAGE2_LOAD_SEG
+    dd STAGE2_START_LBA
+    dd 0
 
-msg_mbr:        db "MBR: Booting...", 0x0D, 0x0A, 0
-msg_loading:    db "MBR: Loading Stage2...", 0x0D, 0x0A, 0
-msg_ok:         db "MBR: Stage2 loaded OK, jumping...", 0x0D, 0x0A, 0
-msg_disk_err:   db "MBR: DISK READ ERROR!", 0x0D, 0x0A, 0
+boot_drive db 0
 
-times 510 - ($ - $$) db 0
+msg_mbr      db "MBR: Booting...",13,10,0
+msg_loading  db "MBR: Loading Stage2...",13,10,0
+msg_ok       db "MBR: Jumping to Stage2...",13,10,0
+msg_disk_err db "MBR: Disk read error!",13,10,0
+msg_no_ext   db "MBR: INT13 extensions missing!",13,10,0
+
+times 510-($-$$) db 0
 dw 0xAA55

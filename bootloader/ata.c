@@ -1,103 +1,143 @@
 // ata.c
-// Advanced Technology Attachment
-// Write for writing and reading specified sector.
+// Disk I/O via BIOS INT 13h Extended (through real-mode trampoline)
 
 #include "ata.h"
 #include "io.h"
 #include "types.h"
-#include "utils.h"
 #include "bootloader.h"
 
-// Reference: https://wiki.osdev.org/ATA_PIO_Mode#Addressing_Modes
-#define ATA_DATA        0x1F0
-#define ATA_SECTOR_CNT  0x1F2
-#define ATA_LBA_LO      0x1F3
-#define ATA_LBA_MID     0x1F4
-#define ATA_LBA_HI      0x1F5
-#define ATA_REG_DRIVE   0x1F6
-#define ATA_CMD         0x1F7
-#define ATA_STATUS      0x1F7
+static uint8_t g_drive = 0x80;
 
-#define ATA_SR_BSY      0x80
-#define ATA_SR_DRQ      0x08
-#define ATA_SR_ERR      0x01
-
-static void ata_wait(void)
+void ata_set_drive(uint8_t drive)
 {
-    while (inb(ATA_CMD) & ATA_SR_BSY);
+    g_drive = drive;
 }
 
-static int ata_wait_drq(void)
+// Parameter block layout at physical address 0x7E00:
+// [0x7E00] uint8_t  function   (0x42=read, 0x43=write, 0x41=check)
+// [0x7E01] uint8_t  drive
+// [0x7E02] uint8_t  cf_result  (filled by trampoline: 1=error)
+// [0x7E03] uint8_t  ah_result  (filled by trampoline: error code)
+// [0x7E04] uint8_t  padding[12]
+// [0x7E10] DAP[16 bytes]       (the actual disk address packet)
+
+#define PARAM_BASE   ((volatile uint8_t *)0x7E00)
+#define PARAM_FUNC   (PARAM_BASE + 0)
+#define PARAM_DRIVE  (PARAM_BASE + 1)
+#define PARAM_CF     (PARAM_BASE + 2)
+#define PARAM_AH     (PARAM_BASE + 3)
+#define DAP_BASE     ((volatile uint8_t *)0x7E10)
+
+typedef struct __attribute__((packed))
 {
-    uint8_t status;
-    for (int i = 0; i < 100000; i++)
+    uint8_t  size;
+    uint8_t  reserved;
+    uint16_t count;
+    uint16_t offset;
+    uint16_t segment;
+    uint64_t lba;
+} DAP;
+
+// Declared in entry.asm
+extern void rm_call_int13(void);
+
+#define BOUNCE_BUFFER      0x6000   // move it lower
+#define BOUNCE_BUFFER_SIZE 4096     // 8 sectors max
+
+static void setup_dap(uint32_t lba, uint8_t count)
+{
+    volatile DAP *dap = (volatile DAP *)DAP_BASE;
+    dap->size = 0x10;
+    dap->reserved = 0x00;
+    dap->count = count;
+    dap->segment = (uint16_t)(BOUNCE_BUFFER >> 4);
+    dap->offset = (uint16_t)(BOUNCE_BUFFER & 0x0F);
+    dap->lba = (uint64_t)lba;
+}
+
+static int call_int13(uint8_t func, uint32_t lba, uint8_t count, uint32_t flat_addr)
+{
+    if ((uint32_t)count * 512 > BOUNCE_BUFFER_SIZE)
     {
-        status = inb(ATA_STATUS);
-        if (status & ATA_SR_ERR)
-            return -1;
-        if (status & ATA_SR_DRQ)
-            return 0;
+        vga_puts("call_int13: count too large!\n");
+        return -1;
     }
 
-    return -1;
+    // for writes: copy to bounce buffer first
+    if (func == 0x43)
+    {
+        uint8_t *src = (uint8_t *)flat_addr;
+        uint8_t *dst = (uint8_t *)BOUNCE_BUFFER;
+        for (uint32_t i = 0; i < (uint32_t)count * 512; i++)
+            dst[i] = src[i];
+    }
+
+    *PARAM_FUNC = func;
+    *PARAM_DRIVE = g_drive;
+    *PARAM_CF = 0;
+    *PARAM_AH = 0;
+
+    setup_dap(lba, count);
+    rm_call_int13();
+
+    if (*PARAM_CF)
+    {
+        vga_puts("INT13 error AH=");
+        vga_put_hex(*PARAM_AH);
+        vga_puts(" LBA=");
+        vga_put_hex(lba);
+        vga_putchar('\n');
+        return -1;
+    }
+
+    // for reads: copy from bounce buffer to destination
+    if (func == 0x42)
+    {
+        uint8_t *src = (uint8_t *)BOUNCE_BUFFER;
+        uint8_t *dst = (uint8_t *)flat_addr;
+        for (uint32_t i = 0; i < (uint32_t)count * 512; i++)
+            dst[i] = src[i];
+    }
+
+    return 0;
+}
+
+int ata_init(void)
+{
+    vga_puts("ATA: Checking INT 13h for drive ");
+    vga_put_hex(g_drive);
+    vga_putchar('\n');
+
+    // use function 0x41 (check extensions), DAP not needed, just checks support
+    *PARAM_FUNC = 0x41;
+    *PARAM_DRIVE = g_drive;
+    *PARAM_CF = 0;
+    *PARAM_AH = 0;
+
+    // handle this as a special case in trampoline
+    static uint8_t scratch[512];
+    if (call_int13(0x42, 0, 1, (uint32_t)scratch) != 0)
+    {
+        vga_puts("ATA: INT 13h read test failed!\n");
+        return -1;
+    }
+
+    vga_puts("ATA: Ready.\n");
+    return 0;
 }
 
 int ata_read(uint32_t lba, uint8_t count, uint8_t *buffer)
 {
-    ata_wait();
-
-    outb(ATA_REG_DRIVE, 0xE0 | ((lba >> 24) & 0x0F));
-    outb(ATA_SECTOR_CNT, count);
-    outb(ATA_LBA_LO, (uint8_t)lba);
-    outb(ATA_LBA_MID, (uint8_t)(lba >> 8));
-    outb(ATA_LBA_HI, (uint8_t)(lba >> 16));
-    outb(ATA_CMD, 0x20);
-
-    uint16_t *ptr = (uint16_t *)buffer; // In Real-Mode, 1 word = 2 bytes = 16 bits
-    for (int s = 0; s < count; s++)
-    {
-        if (ata_wait_drq() != 0)
-        {
-            vga_puts("ata_wait_drq(): ERROR!\n");
-            return -1;
-        }
-
-        for (int i = 0; i < 256; i++)
-            ptr[i] = inw(ATA_DATA);
-
-        ptr += 256;
-
-        ata_wait();
-    }
-
-    return 0;
+    return call_int13(0x42, lba, count, (uint32_t)buffer);
 }
 
 int ata_write(uint32_t lba, uint8_t count, const uint8_t *buffer)
 {
-    ata_wait();
+    // Copy to bounce buffer first, then write
+    uint8_t *dst = (uint8_t *)BOUNCE_BUFFER;
+    uint32_t bytes = (uint32_t)count * 512;
+    for (uint32_t i = 0; i < bytes; i++)
+        dst[i] = buffer[i];
 
-    outb(ATA_REG_DRIVE, 0xE0 | ((lba >> 24) & 0x0F));
-    outb(ATA_SECTOR_CNT, count);
-    outb(ATA_LBA_LO, (uint8_t)lba);
-    outb(ATA_LBA_MID, (uint8_t)(lba >> 8));
-    outb(ATA_LBA_HI, (uint8_t)(lba >> 16));
-    outb(ATA_CMD, 0x30);
-
-    const uint16_t *ptr = (const uint16_t *)buffer;
-    for (int s = 0; s < count; s++)
-    {
-        if (ata_wait_drq() != 0)
-            return -1;
-
-        for (int i = 0; i < 256; i++)
-            outw(ATA_DATA, ptr[i]);
-
-        ptr += 256;
-        outb(ATA_CMD, 0xE7);
-
-        ata_wait();
-    }
-
-    return 0;
+    return call_int13(0x43, lba, count, BOUNCE_BUFFER);
 }

@@ -3,9 +3,6 @@
 #include "keyboard.h"
 #include "io.h"
 
-#define KEYBOARD_DATA_PORT 0x60
-#define KEYBOARD_STATUS_PORT 0x64
-
 static int shift_pressed = 0;
 static int caps_lock = 0;
 
@@ -82,10 +79,20 @@ char keyboard_getchar(void)
         if (c == 0)
             continue;
 
-        if (caps_lock && c >= 'a' && c <= 'z')
-            c -= 32;
-        if (caps_lock && c >= 'A' && c <= 'Z')
-            c += 32;
+        // Caps Lock only affects letters
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+        {
+            if (caps_lock ^ shift_pressed)
+            {
+                if (c >= 'a' && c <= 'z')
+                    c -= 32;
+            }
+            else
+            {
+                if (c >= 'A' && c <= 'Z')
+                    c += 32;
+            }
+        }
 
         return c;
     }
@@ -120,4 +127,12 @@ void keyboard_readline(char *buffer, int max)
     }
 
     buffer[i] = '\0';
+}
+
+void keyboard_flush(void)
+{
+    for (volatile uint32_t i = 0; i < 20000000; i++);
+
+    while (inb(KEYBOARD_STATUS_PORT) & 0x01)
+        inb(KEYBOARD_DATA_PORT);
 }

@@ -1,32 +1,29 @@
-OUTPUT_FORMAT("binary")
-OUTPUT_ARCH(i386)
 ENTRY(_start)
 
-SECTIONS {
+SECTIONS
+{
     . = 0x8000;
 
-    .text : {
-        *(.text._start)
-        *(.text)
-        *(.text.*)
+    .text :
+    {
+        *(.text*)
     }
 
-    .rodata : {
-        *(.rodata)
-        *(.rodata.*)
+    .rodata :
+    {
+        *(.rodata*)
     }
 
-    .data : {
-        *(.data)
-        *(.data.*)
+    .data :
+    {
+        *(.data*)
     }
 
-    . = ALIGN(4);
-    __bss_start = .;
-    .bss : {
-        *(.bss)
-        *(.bss.*)
+    .bss :
+    {
+        __bss_start = .;
+        *(.bss*)
         *(COMMON)
+        __bss_end = .;
     }
-    __bss_end = .;
 }

@@ -5,7 +5,7 @@
 
 void kdf_derive(uint8_t key[32], const char *password, const uint8_t salt[16], uint32_t iterations)
 {
-    uint8_t state[32] = { 0 };
+    uint8_t state[64] = { 0 };  // full 64 bytes to avoid OOB read/write
 
     int i = 0;
     while (*password && i < 32)
@@ -23,7 +23,7 @@ void kdf_derive(uint8_t key[32], const char *password, const uint8_t salt[16], u
     for (uint32_t iter = 0; iter < iterations; iter++)
     {
         salsa20_init(&ctx, state, nonce, iter);
-        salsa20_encrypt(&ctx, state, state, 32);
+        salsa20_encrypt(&ctx, state, state, 64);  // full 64 bytes, no OOB
 
         state[0] ^= (uint8_t)iter;
         state[1] ^= (uint8_t)(iter >> 8);

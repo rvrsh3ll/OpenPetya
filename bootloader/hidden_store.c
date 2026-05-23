@@ -26,16 +26,55 @@ static uint32_t mft_backup_start_lba(void)
 
 static uint32_t get_mft_lba(uint32_t partition_lba)
 {
+    vga_puts("get_mft_lba: reading VBR at LBA ");
+    vga_put_dec(partition_lba);
+    vga_putchar('\n');
+
     if (ata_read(partition_lba, 1, sector_buffer) != 0)
+    {
+        vga_puts("get_mft_lba: VBR read failed!\n");
         return 0;
+    }
 
-    uint8_t spc = sector_buffer[13]; // sectors per cluster
+    // Check NTFS signature at offset 3
+    vga_puts("OEM: ");
+    for (int i = 3; i < 11; i++)
+        vga_putchar(sector_buffer[i]);
+    vga_putchar('\n');
+
+    if (sector_buffer[3] != 'N' || sector_buffer[4] != 'T' ||
+        sector_buffer[5] != 'F' || sector_buffer[6] != 'S')
+    {
+        vga_puts("get_mft_lba: Not NTFS at this LBA!\n");
+        vga_puts("First 16 bytes: ");
+        for (int i = 0; i < 16; i++)
+        {
+            vga_put_hex(sector_buffer[i]);
+            vga_putchar(' ');
+        }
+        vga_putchar('\n');
+        return 0;
+    }
+
+    uint8_t spc = sector_buffer[13];
+    vga_puts("sectors_per_cluster: ");
+    vga_put_dec(spc);
+    vga_putchar('\n');
+
     uint64_t mft_cluster = 0;
-
     for (int i = 0; i < 8; i++)
         mft_cluster |= (uint64_t)sector_buffer[i + 48] << (i * 8);
 
-    return (uint32_t)(partition_lba + mft_cluster * spc);
+    vga_puts("mft_cluster: ");
+    vga_put_hex((uint32_t)mft_cluster);
+    vga_putchar('\n');
+
+    uint32_t mft_lba = (uint32_t)(partition_lba + mft_cluster * spc);
+    vga_puts("mft_lba: ");
+    vga_put_dec(mft_lba);
+    vga_putchar('\n');
+
+    return mft_lba;
 }
 
 int hidden_store_init(uint64_t disk_sectors)
@@ -99,7 +138,7 @@ int hidden_backup_mft(uint32_t partition_lba)
     hdr.mft_sector_count = MFT_BACKUP_SECTORS;
     hdr.disk_total_sectors = disk_end_lba + 1;
 
-    uint8_t hdr_sector[512] = { 0 };
+    static uint8_t hdr_sector[512] = { 0 };
     for (uint32_t i = 0; i < sizeof(HiddenHeader); i++)
         hdr_sector[i] = ((uint8_t *)&hdr)[i];
 
@@ -160,7 +199,7 @@ int hidden_wipe(void)
 {
     vga_puts("Wiping hidden area...\n");
 
-    uint8_t zero[512] = { 0 };
+    static uint8_t zero[512] = { 0 };
 
     for (uint32_t i = 0; i < MFT_BACKUP_SECTORS; i++)
         ata_write(mft_backup_start_lba() + i, 1, zero);
@@ -175,7 +214,7 @@ int hidden_wipe(void)
 
 int hidden_read_header(HiddenHeader *hdr)
 {
-    uint8_t state[512];
+    static uint8_t state[512];
     if (ata_read(60, 1, state) != 0)
         return -1;
 

@@ -22,4 +22,7 @@ void bootloader_main(uint32_t boot_drive);
 void do_chainload(void) __attribute__((noreturn));
 void do_reboot(void) __attribute__((noreturn));
 
+extern char __bss_start[];
+extern char __bss_end[];
+
 #endif

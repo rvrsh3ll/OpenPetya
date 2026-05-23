@@ -4,7 +4,6 @@
 #include "ata.h"
 #include "kdf.h"
 #include "salsa20.h"
-#include "petya.h"
 #include "bootloader.h"
 
 static uint32_t prng_state = 0;
@@ -32,25 +31,28 @@ static uint32_t prng_next(void)
 
 static int read_salt(uint8_t salt[SALT_SIZE])
 {
-    uint8_t sector[512];
+    static uint8_t sector[512];
     if (ata_read(SALT_SECTOR, 1, sector) != 0)
         return -1;
 
-    if (sector[16] != 0x53 || sector[17] != 0x41 || sector[18] != 0x4C || sector[19] != 0x54)
+    // Check magic at bytes 0–3
+    if (sector[0] != 0x53 || sector[1] != 0x41 ||
+        sector[2] != 0x4C || sector[3] != 0x54)
     {
-        vga_puts("Salt sector: invalid magic marker or not initialized!\n");
+        vga_puts("Salt sector: invalid magic!\n");
         return -1;
     }
 
+    // Read salt from bytes 4 onward
     for (int i = 0; i < SALT_SIZE; i++)
-        salt[i] = sector[i];
+        salt[i] = sector[4 + i];
 
     return 0;
 }
 
 static int get_mft_lba(uint32_t partition_lba, uint32_t *mft_lba_out)
 {
-    uint8_t vbr[512];
+    static uint8_t vbr[512];
     if (ata_read(partition_lba, 1, vbr) != 0)
         return -1;
 
@@ -96,8 +98,8 @@ static int ntfs_mft_crypt(const char *password, uint32_t partition_lba, int encr
     vga_put_hex(mft_lba);
     vga_putchar('\n');
 
-    uint8_t sector_buffer[512];
-    uint8_t out_buffer[512];
+    static uint8_t sector_buffer[512];
+    static uint8_t out_buffer[512];
 
     vga_puts(encryption ? "Encrypting..." : "Decrypting...");
     vga_puts("MFT [");
@@ -147,24 +149,25 @@ static int ntfs_mft_crypt(const char *password, uint32_t partition_lba, int encr
 
 int ntfs_generate_salt(void)
 {
-    uint8_t sector[512] = { 0 };
-    
+    static uint8_t sector[512] = { 0 };
+
+    // Magic marker FIRST at bytes 0–3
+    sector[0] = 0x53;  // 'S'
+    sector[1] = 0x41;  // 'A'
+    sector[2] = 0x4C;  // 'L'
+    sector[3] = 0x54;  // 'T'
+
     prng_seed();
 
-    uint8_t *salt = sector;
+    // Salt at bytes 4 onward
     for (int i = 0; i < SALT_SIZE; i += 4)
     {
         uint32_t r = prng_next();
-        salt[i+0] = (uint8_t)r;
-        salt[i+1] = (uint8_t)(r >> 8);
-        salt[i+2] = (uint8_t)(r >> 16);
-        salt[i+3] = (uint8_t)(r >> 24);
+        sector[4 + i + 0] = (uint8_t)r;
+        sector[4 + i + 1] = (uint8_t)(r >> 8);
+        sector[4 + i + 2] = (uint8_t)(r >> 16);
+        sector[4 + i + 3] = (uint8_t)(r >> 24);
     }
-
-    sector[16] = 0x53;
-    sector[17] = 0x41;
-    sector[18] = 0x4C;
-    sector[19] = 0x54;
 
     if (ata_write(SALT_SECTOR, 1, sector) != 0)
     {
@@ -199,8 +202,8 @@ int ntfs_mft_encrypt(const char *password, uint32_t partition_lba)
 
     vga_puts("Encrypting MFT [");
     
-    uint8_t sector_buffer[512];
-    uint8_t out_buffer[512];
+    static uint8_t sector_buffer[512];
+    static uint8_t out_buffer[512];
     for (uint32_t i = 0; i < MFT_ENCRYPT_SECTORS; i++)
     {
         if (ata_read(mft_lba + i, 1, sector_buffer) != 0)
@@ -280,8 +283,8 @@ int ntfs_mft_decrypt(const char *password, uint32_t partition_lba)
 
     vga_puts("Decrypting MFT [");
 
-    uint8_t sector_buffer[512];
-    uint8_t out_buffer[512];
+    static uint8_t sector_buffer[512];
+    static uint8_t out_buffer[512];
 
     for (uint32_t i = 0; i < MFT_ENCRYPT_SECTORS; i++)
     {
@@ -325,4 +328,106 @@ int ntfs_mft_decrypt(const char *password, uint32_t partition_lba)
         key[i] = 0;
 
     return 0;
+}
+
+static const uint8_t KNOWN_PLAIN[32] = {
+    'B','O','O','T','L','O','A','D',
+    'E','R','V','E','R','I','F','Y',
+    0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,
+    0xDE,0xAD,0xBE,0xEF,0xCA,0xFE,0xBA,0xBE
+};
+
+static void compute_tag(const uint8_t key[32], uint8_t tag[TAG_SIZE])
+{
+    uint8_t nonce[8] = {
+        0xAB, 0xCD, 0xEF, 0x12,
+        0x34, 0x56, 0x78, 0x9A,
+    };
+
+    Salsa20_Ctx ctx;
+
+    salsa20_init(&ctx, key, nonce, 0);
+
+    salsa20_encrypt(&ctx, KNOWN_PLAIN, tag, TAG_SIZE);
+}
+
+int validate_save_tag(const uint8_t key[32])
+{
+    static uint8_t sector[512] = { 0 };
+
+    sector[0] = VALIDATE_MAGIC_0;
+    sector[1] = VALIDATE_MAGIC_1;
+    sector[2] = VALIDATE_MAGIC_2;
+    sector[3] = VALIDATE_MAGIC_3;
+
+    compute_tag(key, sector + 4);
+
+    if (ata_write(VALIDATE_SECTOR, 1, sector) != 0)
+    {
+        vga_puts("validate_save_tag: write failed\n");
+        return -1;
+    }
+
+    vga_puts("Validation tag saved to sector");
+    vga_put_dec(VALIDATE_SECTOR);
+    vga_putchar('\n');
+
+    return 0;
+}
+
+int validate_check_key(const uint8_t key[32])
+{
+    static uint8_t sector[512] __attribute__((aligned(16)));
+
+    if (ata_read(VALIDATE_SECTOR, 1, sector) != 0)
+    {
+        vga_puts("validate_check_key: read failed\n");
+        return 0;
+    }
+
+    if (sector[0] != VALIDATE_MAGIC_0 || sector[1] != VALIDATE_MAGIC_1 || sector[2] != VALIDATE_MAGIC_2 || sector[3] != VALIDATE_MAGIC_3)
+    {
+        vga_puts("Validate sector not initialized!");
+        return 0;
+    }
+
+    uint8_t expected_tag[TAG_SIZE] __attribute__((aligned(16)));;
+    compute_tag(key, expected_tag);
+
+    vga_puts("expected: ");
+    for (int i = 0; i < TAG_SIZE; i++)
+    {
+        vga_put_hex(expected_tag[i]);
+        vga_putchar(' ');
+    }
+    vga_putchar('\n');
+
+    vga_puts("stored: ");
+    for (int i = 0; i < TAG_SIZE; i++)
+    {
+        vga_put_hex(sector[i + 4]);
+        vga_putchar(' ');
+    }
+    vga_putchar('\n');
+
+    vga_puts("SALT_SIZE=");
+    vga_put_dec(SALT_SIZE);
+    vga_putchar('\n');
+
+    vga_puts("KDF_ITERATIONS=");
+    vga_put_dec(KDF_ITERATIONS);
+    vga_putchar('\n');
+
+    vga_puts("TAG_SIZE=");
+    vga_put_dec(TAG_SIZE);
+    vga_putchar('\n');
+
+    uint8_t diff = 0;
+    for (int i = 0; i < TAG_SIZE; i++)
+        diff |= expected_tag[i] ^ sector[i + 4];
+
+    vga_put_hex(diff);
+    vga_putchar('\n');
+
+    return diff == 0; // 0 = all bytes match = correct key
 }

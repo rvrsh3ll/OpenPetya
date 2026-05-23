@@ -11,41 +11,59 @@ extern __bss_end
 global _start
 global do_chainload
 global do_reboot
+global rm_call_int13
+
+CODE_SEL equ 0x08
+DATA_SEL equ 0x10
+
+STACK_TOP equ 0x70000
+
+%define SAVED_ESP_ADDR 0x1000
 
 _start:
-    mov [boot_drive_store], dl
-
-    mov si, msg_stage2
-    call print_string
-
     cli
 
-    ; call A32 line via port 20
+    mov [boot_drive_store], dl
+
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov sp, 0x7000
+
+    ; Enable A20
     in al, 0x92
-    or al, 2
+    or al, 00000010b
+    and al, 11111110b
     out 0x92, al
 
-    ; load GDT
+    ; Load GDT
     lgdt [gdt_descriptor]
 
-    ; Set CR0.PE = 1, entering Protected Mode
+    ; Enter PM
     mov eax, cr0
     or eax, 1
     mov cr0, eax
 
-    ; far jump: clear all pipelines and load 32-bit code segment selector
-    jmp 0x08:protected_mode_entry
+    jmp CODE_SEL:protected_mode_entry
 
+; Real-Mode print function
 print_string:
     pusha
+
 .loop:
     lodsb
     test al, al
     jz .done
+
     mov ah, 0x0E
     mov bh, 0
+
     int 0x10
+
     jmp .loop
+
 .done:
     popa
     ret
@@ -56,22 +74,21 @@ gdt_start:
 gdt_null:
     dq 0
 
-; Code Segment (selector 0x08): Base=0, Limit=4GB, Ring0, 32-bit
 gdt_code:
     dw 0xFFFF
     dw 0x0000
-    db 0x00
+    db 0
     db 10011010b
     db 11001111b
-    db 0x00
+    db 0
 
 gdt_data:
     dw 0xFFFF
     dw 0x0000
-    db 0x00
+    db 0
     db 10010010b
     db 11001111b
-    db 0x00
+    db 0
 
 gdt_end:
 
@@ -79,31 +96,27 @@ gdt_descriptor:
     dw gdt_end - gdt_start - 1
     dd gdt_start
 
-boot_drive_store: db 0
-msg_stage2: db "Stage2: Entry (16-bit OK)", 0x0D, 0x0A, 0
-
-; 16-bit GDT (Return to Real Mode)
+; 16-bit GDT
 gdt16_start:
 
 gdt16_null:
     dq 0
 
-; 16-bit Code Segment (selector 0x08)
 gdt16_code:
     dw 0xFFFF
     dw 0x0000
-    db 0x00
+    db 0
     db 10011010b
     db 00001111b
-    db 0x00
+    db 0
 
 gdt16_data:
     dw 0xFFFF
     dw 0x0000
-    db 0x00
+    db 0
     db 10010010b
     db 00001111b
-    db 0x00
+    db 0
 
 gdt16_end:
 
@@ -111,117 +124,195 @@ gdt16_descriptor:
     dw gdt16_end - gdt16_start - 1
     dd gdt16_start
 
-msg_chainload: db "Chainloading...", 0x0D, 0x0A, 0
-msg_chain_err: db "Chain read error!", 0x0D, 0x0A, 0
+boot_drive_store db 0
 
-; 32-bit Protected Mode
+; Protected-Mode
 [BITS 32]
 
 protected_mode_entry:
-    mov ax, 0x10
+
+    mov ax, DATA_SEL
+
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
 
-    mov esp, 0x90000 ; stack
+    mov esp, STACK_TOP
 
-    ; clear BSS (C environment requires all global variables to be zero)
+    ; Clear BSS
     mov edi, __bss_start
+
     mov ecx, __bss_end
     sub ecx, edi
+
     xor eax, eax
+
+    shr ecx, 2
+
     rep stosd
 
     movzx eax, byte [boot_drive_store]
+
     push eax
+
     call bootloader_main
 
+.dead:
     cli
+    hlt
+    jmp .dead
+
+; Reboot
+do_reboot:
+    cli
+
+.wait:
+    in al, 0x64
+    test al, 0x02
+    jnz .wait
+
+    mov al, 0xFE
+    out 0x64, al
 
 .hang:
     hlt
     jmp .hang
 
-[BITS 32]
-
-; do_chainload
-; Call in C, return to Real Mode, and jump to the original stored bootloader
+; Chainloading
 do_chainload:
     cli
 
-    ; load 16-bit GDT
     lgdt [gdt16_descriptor]
 
-    ; Far jump to 16-bit code segment
-    jmp 0x08:pm16_entry
-
-[BITS 32]
-do_reboot:
-    cli
-.wait_kbc:
-    in al, 0x64
-    test al, 0x02
-    jnz .wait_kbc
-    mov al, 0xFE
-    out 0x64, al
-
-    cli
-    hlt
-    jmp do_reboot
+    jmp 0x08:pm16_chain
 
 [BITS 16]
-pm16_entry:
-    ; update segment registers for 16-bit data selector
+
+pm16_chain:
+
     mov ax, 0x10
+
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
 
-    ; disable Protected Mode
     mov eax, cr0
     and eax, 0xFFFFFFFE
     mov cr0, eax
 
-    ; far jump to Real Mode
-    jmp 0x0000:rm_entry
+    jmp 0x0000:rm_chain
 
-rm_entry:
-    ; clear Real Mode segment registers
+rm_chain:
+
     xor ax, ax
+
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov sp, 0x7C00
 
-    mov si, msg_chainload
-    call print_string
+    mov sp, 0x7000
 
+    ; Read original bootloader
     mov bx, 0x7A00
+
     mov ah, 0x02
     mov al, 1
+
     mov ch, 0
     mov cl, 63
     mov dh, 0
+
     mov dl, [boot_drive_store]
+
     int 0x13
 
-    jc .read_error
+    jc $
 
-    ; jump to the original bootloader
     mov dl, [boot_drive_store]
+
     jmp 0x0000:0x7A00
 
-.read_error:
-    mov si, msg_chain_err
-    call print_string
+; INT13 Trampoline
+[BITS 32]
+
+rm_call_int13:
+
+    mov [SAVED_ESP_ADDR], esp
+
     cli
 
-.dead:
-    hlt
-    jmp .dead
+    lgdt [gdt16_descriptor]
+
+    jmp 0x08:pm16_int13
+
+[BITS 16]
+
+pm16_int13:
+
+    mov ax, 0x10
+
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov eax, cr0
+    and eax, 0xFFFFFFFE
+    mov cr0, eax
+
+    jmp 0x0000:rm_int13
+
+rm_int13:
+
+    xor ax, ax
+
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
+    mov sp, 0x7000
+
+    mov si, 0x7E10
+
+    mov ah, [0x7E00]
+    mov dl, [0x7E01]
+
+    int 0x13
+
+    setc al
+
+    mov [0x7E02], al
+    mov [0x7E03], ah
+
+    cli
+
+    lgdt [gdt_descriptor]
+
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+
+    jmp CODE_SEL:back32
+
+[BITS 32]
+
+back32:
+
+    mov ax, DATA_SEL
+
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
+    mov esp, [SAVED_ESP_ADDR]
+
+    ret
