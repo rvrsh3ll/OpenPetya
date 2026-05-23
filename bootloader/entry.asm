@@ -184,9 +184,18 @@ do_reboot:
 do_chainload:
     cli
 
-    lgdt [gdt16_descriptor]
+    ; use A20
+    in al, 0x92
+    or al, 00000010b
+    out 0x92, al
 
-    jmp 0x08:pm16_chain
+    ; rebooting for chainloading
+    mov al, 0xFE
+    out 0x64, al
+
+.hang:
+    hlt
+    jmp .hang
 
 [BITS 16]
 

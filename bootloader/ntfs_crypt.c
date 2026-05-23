@@ -394,40 +394,9 @@ int validate_check_key(const uint8_t key[32])
     uint8_t expected_tag[TAG_SIZE] __attribute__((aligned(16)));;
     compute_tag(key, expected_tag);
 
-    vga_puts("expected: ");
-    for (int i = 0; i < TAG_SIZE; i++)
-    {
-        vga_put_hex(expected_tag[i]);
-        vga_putchar(' ');
-    }
-    vga_putchar('\n');
-
-    vga_puts("stored: ");
-    for (int i = 0; i < TAG_SIZE; i++)
-    {
-        vga_put_hex(sector[i + 4]);
-        vga_putchar(' ');
-    }
-    vga_putchar('\n');
-
-    vga_puts("SALT_SIZE=");
-    vga_put_dec(SALT_SIZE);
-    vga_putchar('\n');
-
-    vga_puts("KDF_ITERATIONS=");
-    vga_put_dec(KDF_ITERATIONS);
-    vga_putchar('\n');
-
-    vga_puts("TAG_SIZE=");
-    vga_put_dec(TAG_SIZE);
-    vga_putchar('\n');
-
     uint8_t diff = 0;
     for (int i = 0; i < TAG_SIZE; i++)
         diff |= expected_tag[i] ^ sector[i + 4];
-
-    vga_put_hex(diff);
-    vga_putchar('\n');
 
     return diff == 0; // 0 = all bytes match = correct key
 }
