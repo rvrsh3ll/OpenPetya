@@ -240,14 +240,15 @@ std::vector<stDriveInfo> fnListDrives()
 void fnPrintDrives(const std::vector<stDriveInfo>& lsDrives)
 {
     std::wcout << "\nAvailable physical drives:\n";
-    std::wcout << "\t# Size\t\tModel\n";
-    std::wcout << "\t------\t\t--------------------\n";
-    for (auto& drive : lsDrives)
+    std::wcout << std::left << std::setw(6) << L"#" << std::setw(12) << "Size" <<  L"Mode\n";
+    std::wcout  << L"------------------------------------------\n";
+
+    for (const auto& drive : lsDrives)
     {
-        double gb = (double)drive.uSizeBytes / (1024 * 1024 * 1024);
-        std::wcout << L"\t[" << drive.nIndex << L"]";
-        std::cout << std::fixed << std::setprecision(1) << std::setw(6) << gb << " GB\t\t";
-        std::wcout << drive.szModel << L"\n";
+        double gb = static_cast<double>(drive.uSizeBytes) / (1024 * 1024 * 1024);
+        std::wstringstream ss;
+        ss << std::fixed << std::setprecision(1) << gb << L" GB";
+        std::wcout << std::left << std::setw(6) << (L"[" + std::to_wstring(drive.nIndex) + L"]") << std::setw(12) << ss.str() << drive.szModel << L'\n';
     }
 }
 
@@ -385,7 +386,7 @@ bool fnbWriteMBR(const std::wstring& szDrivePath, const std::string& szMbrPath)
         return false;
     }
 
-    printf("Custom MBR: %s (%d)\n", szMbrPath, abMBR.size());
+    std::cout << "Custom MBR: " << szMbrPath << "(" << abMBR.size() << ")\n";
 
     clsDiskHandle disk;
     if (!disk.fnbOpen(szDrivePath, true))
