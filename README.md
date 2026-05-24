@@ -183,7 +183,7 @@ Detailed explanations about:
 - bootkit design
 - More discussions about Petya and NotPetya
 
-Will be documented in my future article of my blog.
+Will be documented in [this article](https://iss4cf0ng.github.io/2026/05/23/2026-5-23-OpenPetya/).
 
 # Disclaimer
 
