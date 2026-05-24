@@ -6,6 +6,10 @@ A Proof-of-Concept bootkit inspired by Petya ransomware, written in Assembly, C,
 
 OpenPetya is an educational project designed to study how bootkits and low-level ransomware operate internally.
 
+<p align="center">
+    <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/6.png" width=800/>
+</p>
+
 The project focuses on:
 - custom MBR bootloading
 - multi-stage boot process
@@ -159,6 +163,10 @@ make            # Build mbr.bin and stage2.bin
 ```
 
 # Usage
+
+<p align="center">
+    <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/5.png" width=800/>
+</p>
 
 ```batch
 OpenPetya.exe --list
