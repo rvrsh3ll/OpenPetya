@@ -1,4 +1,7 @@
 ; mbr.asm
+; Author: https://github.com/iss4cf0ng
+; MBR (Master Boot Record) code to load the second stage bootloader.
+; Functionality: Load stage 2 bootloader and jump to it.
 
 [BITS 16]
 [ORG 0x7C00]
@@ -6,8 +9,8 @@
 STAGE2_LOAD_SEG  equ 0x0000
 STAGE2_LOAD_OFF  equ 0x8000
 
-; 64 sectors = 32KB
-STAGE2_SECTORS   equ 64
+; 52 sectors = a bit more than 25 KB
+STAGE2_SECTORS   equ 52
 
 STAGE2_START_LBA equ 1
 

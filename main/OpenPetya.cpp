@@ -1,4 +1,6 @@
 // OpenPetya.cpp
+// Author: iss4cf0ng/ISSAC
+// GitHub: https://github.com/iss4cf0ng/OpenPetya/
 
 #include <windows.h>
 #include <winternl.h>

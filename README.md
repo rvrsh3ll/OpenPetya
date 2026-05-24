@@ -154,7 +154,7 @@ The workflow of OpenPetya is summarized below.
 You can build the project using the commands below.
 
 ```bash
-makefile        # Build mbr.bin and stage2.bin
+make            # Build mbr.bin and stage2.bin
 ./build.exe     # Build OpenPetya.exe
 ```
 
@@ -175,8 +175,7 @@ Detailed explanations about:
 - bootkit design
 - More discussions about Petya and NotPetya
 
-Are documented in [this article]()
-
+Will be documented in my future article of my blog.
 
 # Disclaimer
 
