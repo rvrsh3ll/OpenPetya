@@ -24,7 +24,7 @@ The project focuses on:
 
 OpenPetya is **NOT** intended to be an exact reimplementation of either Petya or NotPetya. Instead, it is a simplified Proof-of-Concept designed for learning and research purposes.
 
-In addition, this project intentionally excludes Command-and-Control (C2) functionality, as the primary focus on low-level bootloader behavior, MFT encryption, and the underlying mechanisms inspired by Petya.
+It is worth mentioning that OpenPetya does not include Command-and-Control (C2) functionality. In addition, OpenPetya stores plaintext MFT backup data inside hidden sectors after encryption. This behavior is intentionally designed for educational purposes because those features are relatively trival compared to the core bootloader and cryptographic mechanisms implemented in this project. However, you can still modify or remove these features if necessary.
 
 ---
 
