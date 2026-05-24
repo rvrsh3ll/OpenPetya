@@ -211,3 +211,15 @@ The author is **NOT** responsible for any misuse of this software.
 <p align="center">
     <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/demo.gif" width=800/>
 </p>
+
+# Future Plans
+
+- Improved recovery workflow
+- Better NTFS parsing
+- More accurate Petya behavior simulation
+- UEFI experiments
+- Additional bootkit research
+
+# Thanks
+
+Thanks for checking out this project. Feedback and suggestions are welcome.
