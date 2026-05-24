@@ -6,6 +6,8 @@ A Proof-of-Concept bootkit inspired by Petya ransomware, written in Assembly, C,
     <img src="https://iss4cf0ng.github.io/images/meme/Rio/4.png" width=200/>
 </p>
 
+If you find this project helpful or informative, I would truly appreciate a ⭐ on the repository. Your support would be a great motivation for me to continue improving this tool.
+
 # Overview
 
 OpenPetya is an educational project designed to study how bootkits and low-level ransomware operate internally.
