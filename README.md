@@ -208,6 +208,14 @@ The author is **NOT** responsible for any misuse of this software.
 
 # Demonstration
 
+## Screenshots
+
+<p align="center">
+    <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/4.png" width=800/>
+</p>
+
+## Runtime Demo
+
 <p align="center">
     <img src="https://iss4cf0ng.github.io/images/article/2026-5-23-OpenPetya/demo.gif" width=800/>
 </p>
