@@ -136,7 +136,7 @@ The workflow of OpenPetya is summarized below.
 
 1. Users install OpenPetya using `OpenPetya.exe` and choose a password.
 
-2. The machine is rebooted manually or through the reboot mechanism provided by the installer.
+2. The machine is rebooted manually or through the BSOD (via `NtRaiseHardError`) mechanism provided by the installer.
 
 3. During boot, the custom MBR loads the stage-2 payload.
 
@@ -188,6 +188,7 @@ Detailed explanations about:
 - MFT encryption workflow
 - bootkit design
 - More discussions about Petya and NotPetya
+- How to use undocumented APIs (such as `NtRaiseHardError`)
 
 Are documented in [this article](https://iss4cf0ng.github.io/2026/05/23/2026-5-23-OpenPetya/).
 
