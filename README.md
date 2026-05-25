@@ -233,6 +233,7 @@ The author is **NOT** responsible for any misuse of this software.
 - UEFI experiments
 - Additional bootkit research
 - Full-screen Graphics Mode
+- Windows 10 support
 
 # Thanks
 
