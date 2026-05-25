@@ -884,7 +884,7 @@ int _tmain(int argc, char *argv[])
             bRestore = true;
             szRestorePath = argv[++i];
         }
-        else if (arg == "--validate" && i + 1 < argc)
+        else if (arg == "--validate")
         {
             bValidate = true;
         }
