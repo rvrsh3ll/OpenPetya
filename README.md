@@ -232,6 +232,7 @@ The author is **NOT** responsible for any misuse of this software.
 - More accurate Petya behavior simulation
 - UEFI experiments
 - Additional bootkit research
+- Full-screen Graphics Mode
 
 # Thanks
 
